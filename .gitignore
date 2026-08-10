@@ -28,6 +28,9 @@ htmlcov/
 .coverage
 .coverage.*
 
+# Local working notes (not part of the repo)
+CONTEXT.md
+
 # OS / editor
 .DS_Store
 *.swp

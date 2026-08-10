@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: oddsmith-postgres
+    environment:
+      POSTGRES_USER: oddsmith
+      POSTGRES_PASSWORD: oddsmith
+      POSTGRES_DB: oddsmith
+    ports:
+      # Host 5435 -> container 5432 (5432/5433/5434 already used by other local projects)
+      - "5435:5432"
+    volumes:
+      - oddsmith_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oddsmith -d oddsmith"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  oddsmith_pg:
