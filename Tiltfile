@@ -1,25 +1,36 @@
 # Oddsmith local dev stack.
 #
-# `tilt up` runs the whole app: Postgres (via docker-compose), the FastAPI
-# backend, and the Next.js frontend — with a live dashboard, log streaming, and
-# auto-restart. Quality tasks (tests, lint, build) stay in the Makefile.
+# The database lives in Supabase, so `tilt up` runs just the app processes: the
+# FastAPI backend and the Next.js frontend — with a live dashboard, log
+# streaming, and auto-restart. Quality tasks (tests, lint, build) stay in the
+# Makefile.
 #
-#   tilt up      # start everything + open the dashboard
-#   tilt down    # stop the app processes and the Postgres container
+#   tilt up                # backend + frontend (DB is Supabase, via DATABASE_URL)
+#   tilt up -- --with-db   # also start the local Postgres container
+#   tilt down              # stop whatever this Tiltfile started
+
+# --with-db brings back the local docker-compose Postgres, which is only needed
+# for the one-off migration into Supabase. It does not repoint the backend:
+# DATABASE_URL in .env still decides what the API connects to.
+config.define_bool('with-db')
+with_db = config.parse().get('with-db', False)
 
 # VIRTUAL_ENV is pinned so uv does not warn about a sibling project's stale env.
 venv = os.path.abspath('.venv')
 
-# --- Postgres (reuses the existing docker-compose service) ---------------- #
-docker_compose('docker-compose.yml')
-dc_resource('db', labels=['infra'])
+# --- Postgres (opt-in; reuses the existing docker-compose service) --------- #
+backend_deps = []
+if with_db:
+    docker_compose('docker-compose.yml')
+    dc_resource('db', labels=['infra'])
+    backend_deps = ['db']
 
 # --- Backend: FastAPI on :8137 -------------------------------------------- #
 local_resource(
     'backend',
     serve_cmd='uv run --active uvicorn oddsmith.api:app --reload --port 8137',
     serve_env={'VIRTUAL_ENV': venv},
-    resource_deps=['db'],
+    resource_deps=backend_deps,
     readiness_probe=probe(
         http_get=http_get_action(port=8137, path='/health'),
         initial_delay_secs=2,

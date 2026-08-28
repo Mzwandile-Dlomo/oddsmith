@@ -54,7 +54,10 @@ The leakage-safe feature pipeline and model promotion rules are documented in
 
 ## Run locally
 
-Requirements: Python 3.14, `uv`, Node.js/npm, Docker, and optionally Tilt.
+Requirements: Python 3.14, `uv`, Node.js/npm, and optionally Tilt. The
+database is hosted on Supabase — set `DATABASE_URL` in `.env` to its
+connection string. Docker is only needed for the optional local Postgres
+(`make db-up`, or `make up-db` to run it as part of the Tilt stack).
 
 ```bash
 cp .env.example .env
@@ -63,8 +66,8 @@ make web-setup
 make up
 ```
 
-The web app runs at `http://localhost:3000`; the API runs at
-`http://localhost:8137`.
+`make up` starts the backend and frontend under a Tilt dashboard. The web app
+runs at `http://localhost:3000`; the API runs at `http://localhost:8137`.
 
 For separate processes:
 

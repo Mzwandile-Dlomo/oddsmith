@@ -11,7 +11,7 @@ WEB_PORT ?= 3000
 .DEFAULT_GOAL := help
 
 .PHONY: help setup web-setup db-up db-down db-reset db-logs \
-        up down run web-dev test lint fmt check \
+        up up-db down run web-dev test lint fmt check \
         web-build web-lint web-check clean
 
 help: ## Show available targets
@@ -45,10 +45,13 @@ db-logs: ## Tail Postgres container logs
 
 # --- Run ------------------------------------------------------------------ #
 
-up: ## Run the full stack (db + backend + frontend) via Tilt with a dashboard
+up: ## Run the app stack (backend + frontend) via Tilt with a dashboard; DB is Supabase
 	tilt up
 
-down: ## Stop the Tilt stack (db + backend + frontend)
+up-db: ## Same as `up`, but also starts the local Postgres container
+	tilt up -- --with-db
+
+down: ## Stop the Tilt stack
 	tilt down
 
 run: db-up ## Run ONLY the API with autoreload (starts the DB first) on $(PORT)
