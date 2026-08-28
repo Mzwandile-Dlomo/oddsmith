@@ -17,6 +17,11 @@ const TARGET_OPTIONS = [1.3, 1.5, 2.0, 3.0] as const;
 const BANKROLL_OPTIONS = [100, 500, 1000] as const;
 const HORIZON_DAYS = 30;
 const MAX_LEGS = 4;
+const MARKET_OPTIONS: { type: MarketType; label: string }[] = [
+  { type: "match_winner", label: "Straight win" },
+  { type: "over_under", label: "Goals O/U 2.5" },
+  { type: "btts", label: "Both teams score" },
+];
 
 function odds(v: number) {
   return v.toFixed(2);
@@ -278,6 +283,7 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
 export function DailyAcca() {
   const [targetOdds, setTargetOdds] = useState<number>(1.5);
   const [bankroll, setBankroll] = useState<number>(100);
+  const [markets, setMarkets] = useState<MarketType[]>(MARKET_OPTIONS.map((m) => m.type));
   const [enabled, setEnabled] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -285,13 +291,14 @@ export function DailyAcca() {
   const queryClient = useQueryClient();
 
   const dailyQuery = useQuery<DailyAccaView>({
-    queryKey: ["daily-acca", targetOdds, bankroll],
+    queryKey: ["daily-acca", targetOdds, bankroll, markets],
     queryFn: () =>
       fetchDailyAcca({
         targetOdds,
         maxLegs: MAX_LEGS,
         bankroll,
         horizonBets: HORIZON_DAYS,
+        markets,
       }),
     enabled,
     staleTime: 60_000,
@@ -314,6 +321,15 @@ export function DailyAcca() {
     if (dailyQuery.isSuccess || dailyQuery.isError) {
       void dailyQuery.refetch();
     }
+  }
+
+  function toggleMarket(market: MarketType) {
+    setMarkets((current) =>
+      current.includes(market)
+        ? current.filter((item) => item !== market)
+        : [...current, market]
+    );
+    setSavedOk(false);
   }
 
   function handleSave() {
@@ -380,6 +396,42 @@ export function DailyAcca() {
 
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+              Betting markets
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {MARKET_OPTIONS.map(({ type, label }) => {
+                const active = markets.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleMarket(type)}
+                    className={`h-9 rounded-lg border px-3 text-xs font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 ${
+                      active
+                        ? "border-[#6C47FF]/40 bg-[#EEE9FF] text-[#6C47FF] ring-1 ring-[#6C47FF]/20"
+                        : "border-[#E5E7EB] bg-white text-[#6B7280] hover:border-[#D1D5DB]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <span
+                className="flex h-9 cursor-not-allowed items-center rounded-lg border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-3 text-xs font-medium text-[#9CA3AF]"
+                title="Requires historical team-corner data before the model can price it"
+              >
+                Corners · data needed
+              </span>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-[#9CA3AF]">
+              Corners will only be enabled after team-level corner history is available and
+              backtested. The app will not invent a confidence score from prices alone.
+            </p>
+          </div>
+
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
               Bankroll
             </p>
             <div className="flex gap-2">
@@ -401,7 +453,7 @@ export function DailyAcca() {
 
           <button
             onClick={handleGenerate}
-            disabled={dailyQuery.isFetching}
+            disabled={dailyQuery.isFetching || markets.length === 0}
             className="flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6C47FF] px-5 text-sm font-semibold text-white transition-all duration-150 hover:bg-[#5B3AEE] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {dailyQuery.isFetching ? (
@@ -421,7 +473,9 @@ export function DailyAcca() {
 
       {dailyQuery.isError && (
         <div className="rounded-xl border border-[#FEE2E2] bg-[#FEF2F2] px-4 py-3 text-sm text-[#DC2626]">
-          Failed to build today&apos;s slip. Please try again.
+          {dailyQuery.error instanceof Error
+            ? dailyQuery.error.message
+            : "Failed to build today's slip. Please try again."}
         </div>
       )}
 

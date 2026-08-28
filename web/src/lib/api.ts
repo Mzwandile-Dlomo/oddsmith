@@ -4,6 +4,7 @@ import type {
   DailyAccaView,
   Fixture,
   HistoryMatch,
+  MarketType,
   SlipCreate,
   SlipUpdate,
   SlipView,
@@ -84,6 +85,7 @@ export interface DailyAccaParams {
   maxLegs: number;
   bankroll: number;
   horizonBets: number;
+  markets: MarketType[];
 }
 
 export async function fetchDailyAcca({
@@ -91,6 +93,7 @@ export async function fetchDailyAcca({
   maxLegs,
   bankroll,
   horizonBets,
+  markets,
 }: DailyAccaParams): Promise<DailyAccaView> {
   const params = new URLSearchParams({
     target_odds: String(targetOdds),
@@ -98,6 +101,7 @@ export async function fetchDailyAcca({
     bankroll: String(bankroll),
     horizon_bets: String(horizonBets),
   });
+  markets.forEach((market) => params.append("markets", market));
   return request<DailyAccaView>(`/acca/daily?${params.toString()}`);
 }
 

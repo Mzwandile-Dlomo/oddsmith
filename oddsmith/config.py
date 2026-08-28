@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,20 +20,23 @@ class Settings(BaseSettings):
     )
 
     # --- The Odds API (the-odds-api.com, v4) ---
-    the_odds_api_key: str | None = None
+    the_odds_api_key: str | None = Field(default=None, repr=False)
     the_odds_api_base_url: str = "https://api.the-odds-api.com/v4"
     # Regions to pull bookmaker odds for (comma-separated per the API).
     the_odds_api_regions: str = "uk,eu"
 
     # --- API-Football (v3) ---
-    api_football_key: str | None = None
+    api_football_key: str | None = Field(default=None, repr=False)
     # Direct api-sports host by default; override with the RapidAPI host if you use RapidAPI.
     api_football_base_url: str = "https://v3.football.api-sports.io"
     api_football_use_rapidapi: bool = False
 
     # --- App ---
     # Postgres in Docker by default (see docker-compose.yml). Host port 5435.
-    database_url: str = "postgresql+psycopg://oddsmith:oddsmith@localhost:5435/oddsmith"
+    database_url: str = Field(
+        default="postgresql+psycopg://oddsmith:oddsmith@localhost:5435/oddsmith",
+        repr=False,
+    )
     default_currency: str = "USD"
     http_timeout_seconds: float = 15.0
     cors_origins: list[str] = ["http://localhost:3000"]

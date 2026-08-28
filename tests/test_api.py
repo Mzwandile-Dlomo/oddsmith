@@ -200,6 +200,10 @@ def test_daily_acca_returns_a_staking_plan(client):
     assert staking["recommended_stake"] <= staking["bankroll"]
     # The naive "let it ride" plan is always reported as ruin.
     assert staking["let_it_ride_bankroll"] == 0.0
+    assert body["fixtures_scanned"] == 1
+    assert body["candidates_scanned"] == 0
+    assert body["model_trained"] is False
+    assert set(body["markets_used"]) == {"match_winner", "over_under", "btts"}
 
 
 def test_daily_acca_with_no_model_returns_an_honest_empty_slip(client):
@@ -244,3 +248,19 @@ def test_daily_acca_rejects_a_backwards_window(client):
 def test_daily_acca_validates_target_odds(client):
     assert client.get("/acca/daily", params={"target_odds": 0.9}).status_code == 422
     assert client.get("/acca/daily", params={"max_legs": 99}).status_code == 422
+
+
+def test_daily_acca_accepts_market_filters(client):
+    body = client.get(
+        "/acca/daily",
+        params=[("markets", "match_winner"), ("markets", "btts")],
+    ).json()
+
+    assert body["markets_used"] == ["btts", "match_winner"]
+
+
+def test_daily_acca_rejects_unmodelled_market(client):
+    response = client.get("/acca/daily", params={"markets": "double_chance"})
+
+    assert response.status_code == 422
+    assert "not modelled" in response.json()["detail"]

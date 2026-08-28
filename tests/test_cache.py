@@ -23,7 +23,7 @@ class CountingProvider(OddsProvider):
                 id=f"counting:{i}",
                 home_team=f"Home {i}",
                 away_team=f"Away {i}",
-                kickoff_utc=datetime(2026, 7, 25, 15, 0, tzinfo=UTC) + timedelta(minutes=i),
+                kickoff_utc=date_from + timedelta(hours=15, minutes=i),
                 league="Test League",
                 provider="counting",
                 markets=[
@@ -61,9 +61,12 @@ def _patch_settings(monkeypatch, settings):
     monkeypatch.setattr(cache_module, "get_settings", lambda: settings)
 
 
+_UPCOMING = datetime.now(UTC) + timedelta(days=1)
 WINDOW = {
-    "date_from": datetime(2026, 7, 25, 0, 0, tzinfo=UTC),
-    "date_to": datetime(2026, 7, 26, 0, 0, tzinfo=UTC),
+    "date_from": _UPCOMING.replace(hour=0, minute=0, second=0, microsecond=0),
+    "date_to": (_UPCOMING + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ),
 }
 
 

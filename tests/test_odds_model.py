@@ -3,11 +3,13 @@ from math import isclose
 from oddsmith.odds_model.acca import Candidate, build_acca
 from oddsmith.odds_model.backtest import backtest_1x2
 from oddsmith.odds_model.poisson import MatchResult
+from oddsmith.odds_model.service import _best_bookmaker_odds
 from oddsmith.odds_model.value import (
     assess_value,
     expected_value,
     implied_probabilities,
 )
+from oddsmith.models import Market, MarketType, Outcome
 
 
 def test_implied_probabilities_remove_margin_and_sum_to_one():
@@ -99,3 +101,21 @@ def test_backtest_empty_is_safe():
 def test_empty_acca_has_no_expected_value():
     # -1.0 would read as "guaranteed total loss" rather than "no bet".
     assert build_acca([], legs=5).combined_expected_value == 0.0
+
+
+def test_goal_model_never_mixes_other_lines_into_over_under_2_5():
+    markets = [
+        Market(
+            type=MarketType.OVER_UNDER,
+            outcomes=[
+                Outcome(name="Over", point=2.5, price=1.91),
+                Outcome(name="Under", point=2.5, price=1.95),
+                Outcome(name="Over", point=4.5, price=4.80),
+                Outcome(name="Under", point=4.5, price=1.12),
+            ],
+        )
+    ]
+
+    best = _best_bookmaker_odds(markets, MarketType.OVER_UNDER)
+
+    assert best == {"Over": 1.91, "Under": 1.95}

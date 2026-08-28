@@ -289,6 +289,10 @@ class DailyAccaView(BaseModel):
     target_odds: float
     target_met: bool
     pool_size: int
+    model_trained: bool
+    fixtures_scanned: int
+    candidates_scanned: int
+    markets_used: list[MarketType]
     staking: StakingView
     note: str
 
@@ -348,7 +352,11 @@ async def weekend_acca(
     return _acca_to_view(build_acca(candidates, legs=legs), fixtures_by_id)
 
 
-def _collect_candidates(fixtures: list[Fixture], value_only: bool = True) -> list[Candidate]:
+def _collect_candidates(
+    fixtures: list[Fixture],
+    value_only: bool = True,
+    markets: set[MarketType] | None = None,
+) -> list[Candidate]:
     """Flatten model-priced fixtures into acca candidates, one per outcome.
 
     Only outcomes the model has both priced and compared against a bookmaker are
@@ -357,6 +365,8 @@ def _collect_candidates(fixtures: list[Fixture], value_only: bool = True) -> lis
     candidates: list[Candidate] = []
     for fixture in fixtures:
         for mm in fixture.model_markets:
+            if markets is not None and mm.type not in markets:
+                continue
             for o in mm.outcomes:
                 if o.edge is None or o.expected_value is None or not o.bookmaker_odds:
                     continue
@@ -394,6 +404,7 @@ async def daily_acca(
     horizon_bets: int = Query(default=30, ge=1, le=365),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
+    markets: list[MarketType] | None = Query(default=None),
     providers: list[OddsProvider] = Depends(get_providers),
     session: Session = Depends(get_session),
 ) -> DailyAccaView:
@@ -412,11 +423,37 @@ async def daily_acca(
     if end < start:
         raise HTTPException(status_code=400, detail="date_to must be after date_from")
 
-    fixtures = await get_cached_fixtures(session, providers, date_from=start, date_to=end)
-    _enrich_with_model(fixtures, get_model_service(session))
+    supported_markets = {
+        MarketType.MATCH_WINNER,
+        MarketType.OVER_UNDER,
+        MarketType.BTTS,
+    }
+    requested_markets = set(markets) if markets else supported_markets
+    unsupported = requested_markets - supported_markets
+    if unsupported:
+        names = ", ".join(sorted(m.value for m in unsupported))
+        raise HTTPException(
+            status_code=422,
+            detail=f"Markets not modelled for daily slips: {names}",
+        )
+
+    fixtures = await get_cached_fixtures(
+        session,
+        providers,
+        date_from=start,
+        date_to=end,
+        markets=list(requested_markets),
+    )
+    service = get_model_service(session)
+    _enrich_with_model(fixtures, service)
+    candidates = _collect_candidates(
+        fixtures,
+        value_only=require_value,
+        markets=requested_markets,
+    )
 
     acca = build_target_acca(
-        _collect_candidates(fixtures, value_only=require_value),
+        candidates,
         target_odds=target_odds,
         max_legs=max_legs,
         min_leg_prob=min_leg_prob,
@@ -441,6 +478,10 @@ async def daily_acca(
         target_odds=target_odds,
         target_met=acca.target_met,
         pool_size=acca.pool_size,
+        model_trained=service.is_trained(),
+        fixtures_scanned=len(fixtures),
+        candidates_scanned=len(candidates),
+        markets_used=sorted(requested_markets, key=lambda m: m.value),
         staking=StakingView(
             bankroll=plan.bankroll,
             full_kelly_fraction=plan.full_kelly_fraction,
@@ -455,11 +496,18 @@ async def daily_acca(
             let_it_ride_bankroll=plan.let_it_ride_bankroll,
             note=plan.note,
         ),
-        note=_daily_note(acca),
+        note=_daily_note(acca, model_trained=service.is_trained(), fixtures=len(fixtures)),
     )
 
 
-def _daily_note(acca: TargetAcca) -> str:
+def _daily_note(acca: TargetAcca, *, model_trained: bool = True, fixtures: int = 1) -> str:
+    if not model_trained:
+        return (
+            "The prediction model has no historical match data. Import training data "
+            "before generating tickets; bookmaker odds alone are not a prediction model."
+        )
+    if fixtures == 0:
+        return "No fixtures with bookmaker odds were found in today's window."
     if not acca.legs:
         return (
             "No selections today clear the model's value and confidence filters. "

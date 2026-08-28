@@ -124,6 +124,11 @@ def _best_bookmaker_odds(markets: list[Market], mtype: MarketType) -> dict[str, 
         if m.type is not mtype:
             continue
         for o in m.outcomes:
+            # The scoreline model currently prices only the 2.5-goal line. Mixing
+            # in (say) an Over 4.5 price and presenting it as Over 2.5 creates a
+            # selection that does not exist and badly overstates its value.
+            if mtype is MarketType.OVER_UNDER and o.point != 2.5:
+                continue
             if o.name not in best or o.price > best[o.name]:
                 best[o.name] = o.price
     return best

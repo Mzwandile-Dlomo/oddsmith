@@ -99,6 +99,10 @@ export interface DailyAccaView {
   target_odds: number;
   target_met: boolean;
   pool_size: number;
+  model_trained: boolean;
+  fixtures_scanned: number;
+  candidates_scanned: number;
+  markets_used: MarketType[];
   staking: StakingView;
   note: string;
 }
