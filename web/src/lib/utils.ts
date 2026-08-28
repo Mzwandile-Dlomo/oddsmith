@@ -71,6 +71,8 @@ export function marketLabel(type: MarketType): string {
       return "Both Teams to Score";
     case "over_under":
       return "Over / Under";
+    case "corner_totals":
+      return "Total Corners";
     case "double_chance":
       return "Double Chance";
     default:

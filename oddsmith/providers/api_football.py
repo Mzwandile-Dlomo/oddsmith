@@ -129,7 +129,14 @@ class ApiFootballProvider(OddsProvider):
                     continue
                 outcomes = self._parse_values(mtype, bet.get("values", []))
                 if outcomes:
-                    markets.append(Market(type=mtype, outcomes=outcomes, bookmaker=title))
+                    markets.append(
+                        Market(
+                            type=mtype,
+                            outcomes=outcomes,
+                            bookmaker=title,
+                            provider=self.name,
+                        )
+                    )
         return markets
 
     def _parse_values(self, mtype: MarketType, values: list[dict]) -> list[Outcome]:

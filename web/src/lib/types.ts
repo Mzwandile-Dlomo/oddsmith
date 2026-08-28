@@ -1,4 +1,9 @@
-export type MarketType = "match_winner" | "btts" | "over_under" | "double_chance";
+export type MarketType =
+  | "match_winner"
+  | "btts"
+  | "over_under"
+  | "corner_totals"
+  | "double_chance";
 export type LegResult = "pending" | "won" | "lost" | "void";
 export type SlipResult = "pending" | "won" | "lost";
 
@@ -12,6 +17,7 @@ export interface Market {
   type: MarketType;
   outcomes: Outcome[];
   bookmaker: string | null;
+  provider: string | null;
 }
 
 export interface ModelOutcome {
@@ -110,6 +116,7 @@ export interface ModelReadinessView {
   date_from: string | null;
   date_to: string | null;
   freshness_days: number | null;
+  price_snapshots: number;
   coverage: DataCoverageView[];
   league_coverage: LeagueCoverageView[];
   markets: MarketReadinessView[];

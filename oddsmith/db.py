@@ -75,6 +75,26 @@ class FetchLog(SQLModel, table=True):
     fixture_count: int = 0
 
 
+class OddsSnapshot(SQLModel, table=True):
+    """One bookmaker outcome price observed at a specific pre-match instant."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    snapshot_key: str = Field(index=True, unique=True)
+    fixture_id: str = Field(index=True)
+    provider: str = Field(index=True)
+    bookmaker: str = Field(index=True)
+    league: str | None = Field(default=None, index=True)
+    kickoff_utc: datetime = Field(index=True)
+    captured_at: datetime = Field(index=True)
+    hours_to_kickoff: float
+    home_team: str
+    away_team: str
+    market_type: str = Field(index=True)
+    selection: str = Field(index=True)
+    point: float | None = Field(default=None, index=True)
+    price: float
+
+
 class HistoricalMatch(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     league: str = Field(index=True)

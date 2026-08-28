@@ -30,6 +30,7 @@ from oddsmith.db import (
     HistoricalMatch,
     MatchObservation,
     ModelEvaluationSnapshot,
+    OddsSnapshot,
     Slip,
     SlipLeg,
     get_session,
@@ -306,6 +307,7 @@ class ModelReadinessView(BaseModel):
     date_from: datetime | None
     date_to: datetime | None
     freshness_days: int | None
+    price_snapshots: int
     coverage: list[DataCoverageView]
     league_coverage: list[LeagueCoverageView]
     markets: list[MarketReadinessView]
@@ -705,6 +707,16 @@ def _coverage(key: str, label: str, records: int, total: int) -> DataCoverageVie
     )
 
 
+def _snapshot_fixture_count(session: Session, market_type: MarketType) -> int:
+    return int(
+        session.exec(
+            select(func.count(func.distinct(OddsSnapshot.fixture_id))).where(
+                OddsSnapshot.market_type == market_type.value
+            )
+        ).one()
+    )
+
+
 @app.get("/model/readiness", response_model=ModelReadinessView)
 def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessView:
     """Expose evidence and gaps behind the model, not a cosmetic "AI ready" flag."""
@@ -745,6 +757,13 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
         session,
         MatchObservation.home_yellow_cards.is_not(None),
         MatchObservation.away_yellow_cards.is_not(None),
+    )
+    price_snapshots = int(
+        session.exec(select(func.count()).select_from(OddsSnapshot)).one()
+    )
+    btts_price_fixtures = _snapshot_fixture_count(session, MarketType.BTTS)
+    corner_price_fixtures = _snapshot_fixture_count(
+        session, MarketType.CORNER_TOTALS
     )
     corner_evaluation = session.exec(
         select(CornerEvaluationSnapshot).order_by(
@@ -788,6 +807,7 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
         date_from=date_from,
         date_to=date_to,
         freshness_days=freshness_days,
+        price_snapshots=price_snapshots,
         coverage=[
             _coverage("results", "Match results", total, total),
             _coverage("corners", "Corner outcomes", corners, total),
@@ -795,8 +815,15 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
             _coverage("cards", "Card statistics", cards, total),
             _coverage("odds_1x2", "Closing 1X2 prices", odds_1x2, total),
             _coverage("odds_goals", "Closing O/U 2.5 prices", odds_goals, total),
-            _coverage("odds_btts", "Historical BTTS prices", 0, total),
-            _coverage("odds_corners", "Historical corner prices", 0, total),
+            _coverage(
+                "odds_btts", "Captured BTTS price fixtures", btts_price_fixtures, total
+            ),
+            _coverage(
+                "odds_corners",
+                "Captured corner-price fixtures",
+                corner_price_fixtures,
+                total,
+            ),
         ],
         league_coverage=league_coverage,
         markets=[
@@ -830,8 +857,14 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 prediction_ready=baseline_total > 0,
                 roi_validated=False,
                 training_rows=total,
-                odds_rows=0,
-                note="Probabilities can be modelled; historical BTTS prices are missing for ROI.",
+                odds_rows=btts_price_fixtures,
+                note=(
+                    "BTTS snapshots are accumulating, but ROI remains blocked until enough "
+                    "fixtures are captured and settled."
+                    if btts_price_fixtures
+                    else "Probabilities can be modelled; historical BTTS prices are missing "
+                    "for ROI."
+                ),
             ),
             MarketReadinessView(
                 key="corners",
@@ -840,10 +873,13 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 prediction_ready=corner_evaluation is not None,
                 roi_validated=False,
                 training_rows=corners,
-                odds_rows=0,
+                odds_rows=corner_price_fixtures,
                 note=(
-                    "Count accuracy is walk-forward tested; historical corner prices are still "
-                    "missing, so ROI cannot be estimated."
+                    "Count accuracy is walk-forward tested; price snapshots are accumulating, "
+                    "but ROI needs enough settled fixtures."
+                    if corner_price_fixtures
+                    else "Count accuracy is walk-forward tested; historical corner prices are "
+                    "still missing, so ROI cannot be estimated."
                     if corner_evaluation is not None
                     else "Outcome data is strong; a count model and historical corner prices "
                     "are missing."

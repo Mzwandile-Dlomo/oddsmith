@@ -1,10 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from oddsmith import cache as cache_module
 from oddsmith.config import Settings
+from oddsmith.db import OddsSnapshot
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider
 
@@ -78,6 +79,42 @@ async def test_miss_fetches_and_stores(session, settings, monkeypatch):
 
     assert provider.calls == 1
     assert len(fixtures) == 2
+    snapshots = list(session.exec(select(OddsSnapshot)))
+    assert len(snapshots) == 2
+    assert all(snapshot.hours_to_kickoff > 0 for snapshot in snapshots)
+    assert all(snapshot.market_type == "match_winner" for snapshot in snapshots)
+
+
+def test_snapshot_capture_is_idempotent_for_same_observation(session):
+    fixture = Fixture(
+        id="test:snapshot",
+        home_team="Home",
+        away_team="Away",
+        kickoff_utc=datetime(2026, 9, 1, 15, tzinfo=UTC),
+        league="Test League",
+        provider="fixture_provider",
+        markets=[
+            Market(
+                type=MarketType.BTTS,
+                bookmaker="Book",
+                provider="market_provider",
+                outcomes=[
+                    Outcome(name="Yes", price=1.8),
+                    Outcome(name="No", price=1.9),
+                ],
+            )
+        ],
+    )
+    captured_at = datetime(2026, 8, 31, 15, tzinfo=UTC)
+
+    cache_module._upsert_fixtures(session, [fixture], captured_at)
+    cache_module._upsert_fixtures(session, [fixture], captured_at)
+
+    snapshots = list(session.exec(select(OddsSnapshot)))
+    assert len(snapshots) == 2
+    assert {snapshot.selection for snapshot in snapshots} == {"Yes", "No"}
+    assert all(snapshot.provider == "market_provider" for snapshot in snapshots)
+    assert all(snapshot.hours_to_kickoff == 24.0 for snapshot in snapshots)
 
 
 async def test_hit_does_not_call_provider(session, settings, monkeypatch):

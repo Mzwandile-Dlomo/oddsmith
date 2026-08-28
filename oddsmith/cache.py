@@ -18,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlmodel import Session, select
 
 from oddsmith.config import get_settings
+from oddsmith.data.odds_snapshots import capture_odds_snapshots
 from oddsmith.db import CachedFixture, FetchLog
 from oddsmith.models import Fixture, MarketType
 from oddsmith.providers.base import OddsProvider
@@ -132,6 +133,7 @@ def _upsert_fixtures(session: Session, fixtures: list[Fixture], fetched_at: date
         )
     }
     stamp = _naive_utc(fetched_at)
+    capture_odds_snapshots(session, fixtures, captured_at=stamp)
     for fixture in fixtures:
         payload = fixture.model_dump(mode="json")
         row = existing.get(fixture.id)

@@ -61,6 +61,7 @@ function Summary({ data }: { data: ModelReadinessView }) {
     { label: "Enriched matches", value: number(data.dataset_matches), icon: Database },
     { label: "Leagues", value: String(data.leagues), icon: BarChart3 },
     { label: "Seasons", value: String(data.seasons), icon: Clock3 },
+    { label: "Price snapshots", value: number(data.price_snapshots), icon: Database },
     {
       label: "Latest result",
       value: date(data.date_to),
@@ -68,7 +69,7 @@ function Summary({ data }: { data: ModelReadinessView }) {
     },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       {items.map(({ label, value, icon: Icon }) => (
         <div key={label} className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 text-[#9CA3AF]">

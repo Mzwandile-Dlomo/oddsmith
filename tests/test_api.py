@@ -84,6 +84,7 @@ def test_model_readiness_is_honest_when_dataset_is_empty(client):
     assert body["model_stage"] == "research_baseline"
     assert body["model_trained"] is False
     assert body["dataset_matches"] == 0
+    assert body["price_snapshots"] == 0
     assert all(item["roi_validated"] is False for item in body["markets"])
 
 
@@ -134,6 +135,7 @@ def test_model_readiness_reports_coverage(client):
     assert coverage["corners"]["percent"] == 100.0
     assert coverage["odds_1x2"]["records"] == 1
     assert coverage["odds_goals"]["records"] == 0
+    assert coverage["odds_btts"]["records"] == 0
 
 
 def test_latest_model_evaluation_requires_a_published_snapshot(client):

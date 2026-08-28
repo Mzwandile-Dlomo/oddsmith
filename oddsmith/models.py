@@ -24,6 +24,7 @@ class MarketType(StrEnum):
     MATCH_WINNER = "match_winner"  # 1X2 / straight win (home / draw / away)
     BTTS = "btts"  # both teams to score (yes / no)
     OVER_UNDER = "over_under"  # total goals over/under a line
+    CORNER_TOTALS = "corner_totals"  # total corners over/under
     DOUBLE_CHANCE = "double_chance"  # 1X / 12 / X2
 
 
@@ -44,6 +45,7 @@ class Market(BaseModel):
     type: MarketType
     outcomes: list[Outcome]
     bookmaker: str | None = None
+    provider: str | None = None
 
 
 class ModelOutcome(BaseModel):

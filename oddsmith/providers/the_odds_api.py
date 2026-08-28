@@ -155,7 +155,14 @@ class TheOddsApiProvider(OddsProvider):
                     if float(o.get("price", 0)) > 1.0
                 ]
                 if outcomes:
-                    out.append(Market(type=mtype, outcomes=outcomes, bookmaker=title))
+                    out.append(
+                        Market(
+                            type=mtype,
+                            outcomes=outcomes,
+                            bookmaker=title,
+                            provider=self.name,
+                        )
+                    )
         return out
 
 
