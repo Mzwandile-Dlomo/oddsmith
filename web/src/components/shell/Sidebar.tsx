@@ -8,6 +8,7 @@ import {
   FlaskConical,
   LayoutGrid,
   ListChecks,
+  Sparkles,
   Sun,
   Trophy,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const PRIMARY: NavItem[] = [
 
 const SECONDARY: NavItem[] = [
   { href: "/build", label: "Build", icon: LayoutGrid, hint: "Manual bet builder" },
+  { href: "/generate", label: "Value", icon: Sparkles, hint: "Positive-EV selections" },
   { href: "/model", label: "Model", icon: FlaskConical, hint: "Evidence and validation" },
 ];
 

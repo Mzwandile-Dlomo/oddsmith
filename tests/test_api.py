@@ -423,3 +423,122 @@ def test_daily_acca_rejects_unmodelled_market(client):
 
     assert response.status_code == 422
     assert "not modelled" in response.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Calendar
+# --------------------------------------------------------------------------- #
+
+
+def _slip_on(kickoff: str, *, stake: float = 10.0, price: float = 2.0) -> dict:
+    return {
+        "stake": stake,
+        "legs": [
+            {
+                "fixture_id": "stub:1",
+                "home_team": "Arsenal",
+                "away_team": "Chelsea",
+                "kickoff_utc": kickoff,
+                "league": "EPL",
+                "provider": "stub",
+                "market_type": "match_winner",
+                "selection": "Home",
+                "price": price,
+            }
+        ],
+    }
+
+
+def test_calendar_returns_one_entry_per_day_in_the_window(client):
+    resp = client.get("/calendar", params={"date_from": "2026-07-20", "date_to": "2026-07-24"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [d["date"] for d in body["days"]] == [
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+    ]
+
+
+def test_calendar_never_calls_a_provider(client, monkeypatch):
+    """A month view must not fan out into a fetch per uncovered day."""
+    called = False
+
+    async def _boom(*args, **kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(api_module, "get_cached_fixtures", _boom)
+    resp = client.get("/calendar", params={"date_from": "2026-07-20", "date_to": "2026-07-24"})
+    assert resp.status_code == 200
+    assert called is False
+    # No day was ever fetched, so every day is honestly empty.
+    assert all(d["fixture_count"] == 0 for d in resp.json()["days"])
+
+
+def test_calendar_buckets_a_slip_by_its_earliest_kickoff_not_creation(client):
+    """A slip built the night before belongs to the day its matches are played."""
+    created = client.post("/slips", json=_slip_on("2026-07-22T15:00:00Z"))
+    assert created.status_code == 201
+
+    body = client.get(
+        "/calendar", params={"date_from": "2026-07-20", "date_to": "2026-07-24"}
+    ).json()
+    by_date = {d["date"]: d for d in body["days"]}
+
+    assert by_date["2026-07-22"]["slip_count"] == 1
+    assert by_date["2026-07-22"]["pending_count"] == 1
+    assert by_date["2026-07-22"]["staked"] == 10.0
+    # Pending slips contribute no P&L — only settled ones do.
+    assert by_date["2026-07-22"]["profit_loss"] == 0.0
+    assert body["settled_slip_count"] == 0
+
+
+def test_calendar_reports_profit_for_a_settled_day(client):
+    slip = client.post("/slips", json=_slip_on("2026-07-22T15:00:00Z")).json()
+    leg_id = slip["legs"][0]["id"]
+    client.patch(f"/slips/{slip['id']}", json={"legs": [{"leg_id": leg_id, "result": "won"}]})
+
+    body = client.get(
+        "/calendar", params={"date_from": "2026-07-20", "date_to": "2026-07-24"}
+    ).json()
+    day = next(d for d in body["days"] if d["date"] == "2026-07-22")
+
+    assert day["won_count"] == 1
+    assert day["profit_loss"] == 10.0  # 10 staked at 2.0 returns 20
+    assert body["profit_loss"] == 10.0
+    assert body["settled_slip_count"] == 1
+
+
+def test_calendar_rejects_a_backwards_window(client):
+    resp = client.get("/calendar", params={"date_from": "2026-07-24", "date_to": "2026-07-20"})
+    assert resp.status_code == 400
+
+
+def test_calendar_rejects_a_window_wider_than_the_cap(client):
+    resp = client.get("/calendar", params={"date_from": "2026-01-01", "date_to": "2026-12-31"})
+    assert resp.status_code == 422
+
+
+def test_fixtures_cached_only_does_not_call_a_provider(client, monkeypatch):
+    """`cached_only` is what keeps browsing back through the calendar free."""
+    called = False
+
+    original = api_module.get_cached_fixtures
+
+    async def _tracking(*args, **kwargs):
+        nonlocal called
+        called = True
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(api_module, "get_cached_fixtures", _tracking)
+
+    assert client.get("/fixtures", params={"cached_only": True}).json() == []
+    assert called is False
+
+    # Without the flag the same window does reach the provider.
+    assert client.get("/fixtures").status_code == 200
+    assert called is True

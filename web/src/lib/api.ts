@@ -35,12 +35,15 @@ async function request<T>(
 
 export async function fetchFixtures(
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  /** Read the cache without calling a provider — use when reviewing past days. */
+  cachedOnly = false
 ): Promise<Fixture[]> {
   const params = new URLSearchParams();
   if (dateFrom) params.set("date_from", dateFrom);
   if (dateTo) params.set("date_to", dateTo);
   params.set("model", "true");
+  if (cachedOnly) params.set("cached_only", "true");
   const qs = params.toString();
   return request<Fixture[]>(`/fixtures${qs ? `?${qs}` : ""}`);
 }

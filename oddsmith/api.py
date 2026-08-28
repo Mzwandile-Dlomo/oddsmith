@@ -41,7 +41,7 @@ from oddsmith.db import (
 from oddsmith.models import Fixture, MarketType
 from oddsmith.providers.api_football import ApiFootballProvider
 from oddsmith.providers.base import OddsProvider
-from oddsmith.cache import find_cached_fixture, get_cached_fixtures
+from oddsmith.cache import find_cached_fixture, get_cached_fixtures, read_cached_fixtures
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
 from oddsmith.odds_model.acca import Acca, Candidate, build_acca
 from oddsmith.odds_model.backtest import backtest_1x2
@@ -195,6 +195,7 @@ async def list_fixtures(
     markets: list[MarketType] | None = Query(default=None),
     refresh: bool = Query(default=False),
     model: bool = Query(default=False),
+    cached_only: bool = Query(default=False),
     providers: list[OddsProvider] = Depends(get_providers),
     session: Session = Depends(get_session),
 ) -> list[Fixture]:
@@ -202,14 +203,18 @@ async def list_fixtures(
     end = date_to or (start + timedelta(days=3))
     if end < start:
         raise HTTPException(status_code=400, detail="date_to must be after date_from")
-    fixtures = await get_cached_fixtures(
-        session,
-        providers,
-        date_from=start,
-        date_to=end,
-        markets=markets,
-        force_refresh=refresh,
-    )
+    if cached_only:
+        # Reviewing a past day must not spend provider quota; serve what we have.
+        fixtures = read_cached_fixtures(session, date_from=start, date_to=end)
+    else:
+        fixtures = await get_cached_fixtures(
+            session,
+            providers,
+            date_from=start,
+            date_to=end,
+            markets=markets,
+            force_refresh=refresh,
+        )
     if model:
         _enrich_with_model(fixtures, get_model_service(session))
     return fixtures

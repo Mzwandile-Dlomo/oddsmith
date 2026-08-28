@@ -73,6 +73,22 @@ def _read_window(
     return list(rows)
 
 
+def read_cached_fixtures(
+    session: Session, *, date_from: datetime, date_to: datetime
+) -> list[Fixture]:
+    """Serve the window from the DB only — never calls a provider.
+
+    Review surfaces (the calendar, a past match day) must not spend odds-API
+    quota re-fetching days the user is only looking back at.
+    """
+    days = _days_in(date_from, date_to)
+    read_from = datetime.combine(days[0], datetime.min.time(), tzinfo=UTC)
+    read_to = datetime.combine(days[-1], datetime.max.time(), tzinfo=UTC)
+    rows = _read_window(session, date_from=read_from, date_to=read_to)
+    fixtures = [Fixture.model_validate(row.payload) for row in rows]
+    return sorted(fixtures, key=lambda f: f.kickoff_utc)
+
+
 async def get_cached_fixtures(
     session: Session,
     providers: list[OddsProvider],
@@ -115,11 +131,7 @@ async def get_cached_fixtures(
 
     # Read by full-day bounds so a fixture kicking off earlier on the first day
     # (or later on the last) is still returned for the requested window.
-    read_from = datetime.combine(days[0], datetime.min.time(), tzinfo=UTC)
-    read_to = datetime.combine(days[-1], datetime.max.time(), tzinfo=UTC)
-    rows = _read_window(session, date_from=read_from, date_to=read_to)
-    fixtures = [Fixture.model_validate(row.payload) for row in rows]
-    return sorted(fixtures, key=lambda f: f.kickoff_utc)
+    return read_cached_fixtures(session, date_from=date_from, date_to=date_to)
 
 
 def _upsert_fixtures(session: Session, fixtures: list[Fixture], fetched_at: datetime) -> None:

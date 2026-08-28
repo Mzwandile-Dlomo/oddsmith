@@ -287,18 +287,25 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
   );
 }
 
-export function DailyAcca() {
+interface DailyAccaProps {
+  /** ISO date (YYYY-MM-DD) to scope the slip to. Omit for the next 24 hours. */
+  date?: string;
+  /** Build immediately instead of waiting for the Generate click. */
+  autoLoad?: boolean;
+}
+
+export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
   const [targetOdds, setTargetOdds] = useState<number>(1.5);
   const [bankroll, setBankroll] = useState<number>(100);
   const [markets, setMarkets] = useState<MarketType[]>(MARKET_OPTIONS.map((m) => m.type));
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(autoLoad);
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
   const dailyQuery = useQuery<DailyAccaView>({
-    queryKey: ["daily-acca", targetOdds, bankroll, markets],
+    queryKey: ["daily-acca", date ?? "next24h", targetOdds, bankroll, markets],
     queryFn: () =>
       fetchDailyAcca({
         targetOdds,
@@ -306,6 +313,7 @@ export function DailyAcca() {
         bankroll,
         horizonBets: HORIZON_DAYS,
         markets,
+        date,
       }),
     enabled,
     staleTime: 60_000,
@@ -346,7 +354,7 @@ export function DailyAcca() {
     setSavedOk(false);
     setSaveError(null);
     saveMutation.mutate({
-      name: `Daily ${data.combined_odds.toFixed(2)} (${data.legs.length}x)`,
+      name: `Daily ${data.combined_odds.toFixed(2)} (${data.legs.length}x)${date ? ` · ${date}` : ""}`,
       // Stake what the plan says, not the whole bankroll.
       stake: data.staking.recommended_stake,
       currency: "USD",
