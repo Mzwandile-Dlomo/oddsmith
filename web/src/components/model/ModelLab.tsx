@@ -11,8 +11,13 @@ import {
   Database,
   ShieldAlert,
 } from "lucide-react";
-import { fetchLatestEvaluation, fetchModelReadiness } from "@/lib/api";
+import {
+  fetchLatestCornerEvaluation,
+  fetchLatestEvaluation,
+  fetchModelReadiness,
+} from "@/lib/api";
 import type {
+  CornerEvaluationReportView,
   EvaluationReportView,
   MarketReadinessView,
   ModelReadinessView,
@@ -269,12 +274,83 @@ function Validation({ report }: { report?: EvaluationReportView }) {
   );
 }
 
+function CornerValidation({ report }: { report?: CornerEvaluationReportView }) {
+  if (!report) return null;
+  const { model, baseline } = report.overall;
+  const improvementIsReliable =
+    report.overall.improvement_ci_low !== null && report.overall.improvement_ci_low > 0;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+      <div className="flex flex-col justify-between gap-3 border-b border-[#E5E7EB] px-5 py-4 sm:flex-row sm:items-center">
+        <div>
+          <h3 className="text-sm font-semibold text-[#111827]">Corner-count validation</h3>
+          <p className="mt-1 text-xs text-[#9CA3AF]">
+            {number(model.matches)} unseen matches · {report.model_name}
+          </p>
+        </div>
+        <span className="self-start rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-[#92400E] sm:self-center">
+          ROI unavailable · {number(report.odds_rows)} price rows
+        </span>
+      </div>
+
+      <div className="grid lg:grid-cols-[0.85fr_1.4fr]">
+        <div className="border-b border-[#E5E7EB] p-5 lg:border-r lg:border-b-0">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-[#F9FAFB] p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Model MAE ↓</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">{model.mae.toFixed(4)}</p>
+            </div>
+            <div className="rounded-xl bg-[#F9FAFB] p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Baseline MAE</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">{baseline.mae.toFixed(4)}</p>
+            </div>
+          </div>
+          <p className={`mt-3 text-xs font-medium ${improvementIsReliable ? "text-[#047857]" : "text-[#92400E]"}`}>
+            Paired MAE gain {report.overall.mae_improvement.toFixed(4)} · 95% interval {report.overall.improvement_ci_low?.toFixed(4) ?? "—"} to {report.overall.improvement_ci_high?.toFixed(4) ?? "—"}
+          </p>
+          <p className="mt-3 text-[11px] leading-relaxed text-[#6B7280]">{report.limitation}</p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-xs">
+            <thead className="bg-[#F9FAFB] text-[10px] uppercase tracking-widest text-[#9CA3AF]">
+              <tr>
+                <th className="px-5 py-2.5 font-semibold">League</th>
+                <th className="px-4 py-2.5 font-semibold">Model MAE</th>
+                <th className="px-4 py-2.5 font-semibold">Baseline</th>
+                <th className="px-4 py-2.5 font-semibold">Gain</th>
+                <th className="px-5 py-2.5 font-semibold">95% interval</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F3F4F6]">
+              {report.leagues.map((league) => (
+                <tr key={league.league}>
+                  <td className="px-5 py-3 font-medium text-[#111827]">{league.league}</td>
+                  <td className="px-4 py-3 tabular-nums text-[#374151]">{league.summary.model.mae.toFixed(4)}</td>
+                  <td className="px-4 py-3 tabular-nums text-[#374151]">{league.summary.baseline.mae.toFixed(4)}</td>
+                  <td className="px-4 py-3 tabular-nums text-[#374151]">{league.summary.mae_improvement.toFixed(4)}</td>
+                  <td className="px-5 py-3 tabular-nums text-[#6B7280]">
+                    {league.summary.improvement_ci_low?.toFixed(4) ?? "—"} to {league.summary.improvement_ci_high?.toFixed(4) ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ModelLabContent({
   data,
   evaluation,
+  cornerEvaluation,
 }: {
   data: ModelReadinessView;
   evaluation?: EvaluationReportView;
+  cornerEvaluation?: CornerEvaluationReportView;
 }) {
   const stale = data.freshness_days !== null && data.freshness_days > 45;
   return (
@@ -307,6 +383,7 @@ function ModelLabContent({
 
       <Summary data={data} />
       <Validation report={evaluation} />
+      <CornerValidation report={cornerEvaluation} />
       <Coverage data={data} />
 
       <section>
@@ -382,6 +459,12 @@ export function ModelLab() {
     staleTime: 5 * 60_000,
     retry: false,
   });
+  const cornerEvaluationQuery = useQuery({
+    queryKey: ["corner-evaluation-latest"],
+    queryFn: fetchLatestCornerEvaluation,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
   if (query.isLoading) {
     return (
@@ -398,5 +481,11 @@ export function ModelLab() {
       </div>
     );
   }
-  return <ModelLabContent data={query.data} evaluation={evaluationQuery.data} />;
+  return (
+    <ModelLabContent
+      data={query.data}
+      evaluation={evaluationQuery.data}
+      cornerEvaluation={cornerEvaluationQuery.data}
+    />
+  );
 }

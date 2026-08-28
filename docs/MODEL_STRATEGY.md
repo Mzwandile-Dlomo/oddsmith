@@ -94,6 +94,13 @@ model passes the promotion gates, and neither ROI interval establishes a
 positive edge. Oddsmith therefore remains a research baseline, not a proven
 profit engine.
 
+The first total-corners count benchmark covers 14,167 unseen matches. Its MAE is
+2.6903 corners versus 2.7110 for a prior league-mean baseline, a paired gain of
+0.0207 with a 95% bootstrap interval from 0.0120 to 0.0307. The gain is positive
+overall but not reliable in Bundesliga or Ligue 1. This validates a small amount
+of count signal, not a betting edge: the dataset contains zero historical corner
+lines/prices, so corner ROI remains untestable and corner tickets remain blocked.
+
 ## Immediate sequence
 
 1. Keep the latest full season untouched while iterating on challenger features.

@@ -8,7 +8,12 @@ from sqlmodel import Session, SQLModel, create_engine
 from oddsmith import api as api_module
 from oddsmith import db as db_module
 from oddsmith.api import app, get_providers
-from oddsmith.db import HistoricalMatch, MatchObservation, ModelEvaluationSnapshot
+from oddsmith.db import (
+    CornerEvaluationSnapshot,
+    HistoricalMatch,
+    MatchObservation,
+    ModelEvaluationSnapshot,
+)
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider
 
@@ -176,6 +181,53 @@ def test_latest_model_evaluation_returns_published_payload(client):
 
     assert body["model_name"] == "Dixon-Coles Poisson"
     assert body["overall"]["strategy"]["roi"] == -0.05
+
+
+def test_latest_corner_evaluation_requires_a_published_snapshot(client):
+    assert client.get("/model/corners/evaluation/latest").status_code == 404
+
+
+def test_latest_corner_evaluation_returns_published_payload(client):
+    generated_at = datetime(2026, 8, 29, tzinfo=UTC)
+    metrics = {
+        "matches": 100,
+        "mean_actual": 9.8,
+        "mean_prediction": 9.7,
+        "mae": 2.6,
+        "rmse": 3.3,
+        "poisson_deviance": 1.1,
+    }
+    payload = {
+        "generated_at": generated_at.isoformat(),
+        "model_name": "Poisson HistGradientBoosting total corners",
+        "min_train_seasons": 4,
+        "leagues": [],
+        "overall": {
+            "model": metrics,
+            "baseline": {**metrics, "mae": 2.7},
+            "mae_improvement": 0.1,
+            "improvement_ci_low": 0.02,
+            "improvement_ci_high": 0.18,
+        },
+        "odds_rows": 0,
+        "roi_validated": False,
+        "limitation": "Historical corner lines and prices are unavailable.",
+    }
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            CornerEvaluationSnapshot(
+                model_name=payload["model_name"],
+                generated_at=generated_at,
+                dataset_matches=100,
+                payload=payload,
+            )
+        )
+        session.commit()
+
+    body = client.get("/model/corners/evaluation/latest").json()
+
+    assert body["overall"]["model"]["mae"] == 2.6
+    assert body["roi_validated"] is False
 
 
 def test_create_and_settle_slip_lifecycle(client):

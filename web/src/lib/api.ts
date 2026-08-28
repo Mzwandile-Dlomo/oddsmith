@@ -1,6 +1,7 @@
 import type {
   AccaView,
   BacktestView,
+  CornerEvaluationReportView,
   DailyAccaView,
   EvaluationReportView,
   Fixture,
@@ -88,6 +89,10 @@ export async function fetchModelReadiness(): Promise<ModelReadinessView> {
 
 export async function fetchLatestEvaluation(): Promise<EvaluationReportView> {
   return request<EvaluationReportView>("/model/evaluation/latest");
+}
+
+export async function fetchLatestCornerEvaluation(): Promise<CornerEvaluationReportView> {
+  return request<CornerEvaluationReportView>("/model/corners/evaluation/latest");
 }
 
 export interface DailyAccaParams {

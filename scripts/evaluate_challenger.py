@@ -8,12 +8,13 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import SQLModel, Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from oddsmith.data.features import build_training_examples
-from oddsmith.db import MatchObservation, ModelEvaluationSnapshot, get_engine
+from oddsmith.data.observations import load_feature_observations
+from oddsmith.db import ModelEvaluationSnapshot, get_engine
 from oddsmith.odds_model.boosted import evaluate_calibrated_boosted
 
 
@@ -34,68 +35,10 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_observations() -> list[MatchObservation]:
-    with Session(get_engine()) as session:
-        rows = list(
-            session.exec(
-                select(
-                    MatchObservation.source_key,
-                    MatchObservation.league,
-                    MatchObservation.season,
-                    MatchObservation.kickoff_utc,
-                    MatchObservation.home_team,
-                    MatchObservation.away_team,
-                    MatchObservation.home_goals,
-                    MatchObservation.away_goals,
-                    MatchObservation.home_shots,
-                    MatchObservation.away_shots,
-                    MatchObservation.home_shots_on_target,
-                    MatchObservation.away_shots_on_target,
-                    MatchObservation.home_corners,
-                    MatchObservation.away_corners,
-                    MatchObservation.home_yellow_cards,
-                    MatchObservation.away_yellow_cards,
-                    MatchObservation.home_red_cards,
-                    MatchObservation.away_red_cards,
-                    MatchObservation.close_home_odds,
-                    MatchObservation.close_draw_odds,
-                    MatchObservation.close_away_odds,
-                ).order_by(MatchObservation.kickoff_utc)
-            )
-        )
-    return [
-        MatchObservation(
-            source_key=row[0],
-            source="database",
-            league=row[1],
-            season=row[2],
-            kickoff_utc=row[3],
-            home_team=row[4],
-            away_team=row[5],
-            home_goals=row[6],
-            away_goals=row[7],
-            home_shots=row[8],
-            away_shots=row[9],
-            home_shots_on_target=row[10],
-            away_shots_on_target=row[11],
-            home_corners=row[12],
-            away_corners=row[13],
-            home_yellow_cards=row[14],
-            away_yellow_cards=row[15],
-            home_red_cards=row[16],
-            away_red_cards=row[17],
-            close_home_odds=row[18],
-            close_draw_odds=row[19],
-            close_away_odds=row[20],
-            raw_payload={},
-        )
-        for row in rows
-    ]
-
-
 def main() -> int:
     args = _parser().parse_args()
-    observations = _load_observations()
+    with Session(get_engine()) as session:
+        observations = load_feature_observations(session)
     examples = build_training_examples(
         observations,
         window=args.feature_window,

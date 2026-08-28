@@ -25,6 +25,7 @@ from sqlmodel import Session, select
 
 from oddsmith.config import get_settings
 from oddsmith.db import (
+    CornerEvaluationSnapshot,
     DEFAULT_USER_ID,
     HistoricalMatch,
     MatchObservation,
@@ -357,6 +358,49 @@ class EvaluationReportView(BaseModel):
     max_edge: float
     leagues: list[LeagueEvaluationView]
     overall: EvaluationSummaryView
+
+
+class CornerMetricsView(BaseModel):
+    matches: int
+    mean_actual: float
+    mean_prediction: float
+    mae: float
+    rmse: float
+    poisson_deviance: float
+
+
+class CornerSummaryView(BaseModel):
+    model: CornerMetricsView
+    baseline: CornerMetricsView
+    mae_improvement: float
+    improvement_ci_low: float | None
+    improvement_ci_high: float | None
+
+
+class CornerFoldEvaluationView(BaseModel):
+    league: str
+    test_season: int
+    train_matches: int
+    test_matches: int
+    summary: CornerSummaryView
+
+
+class CornerLeagueEvaluationView(BaseModel):
+    league: str
+    seasons: int
+    folds: list[CornerFoldEvaluationView]
+    summary: CornerSummaryView
+
+
+class CornerEvaluationReportView(BaseModel):
+    generated_at: datetime
+    model_name: str
+    min_train_seasons: int
+    leagues: list[CornerLeagueEvaluationView]
+    overall: CornerSummaryView
+    odds_rows: int
+    roi_validated: bool
+    limitation: str
 
 
 class StakingView(BaseModel):
@@ -702,6 +746,11 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
         MatchObservation.home_yellow_cards.is_not(None),
         MatchObservation.away_yellow_cards.is_not(None),
     )
+    corner_evaluation = session.exec(
+        select(CornerEvaluationSnapshot).order_by(
+            CornerEvaluationSnapshot.generated_at.desc()
+        )
+    ).first()
 
     league_rows = session.exec(
         select(
@@ -759,7 +808,10 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 roi_validated=False,
                 training_rows=total,
                 odds_rows=odds_1x2,
-                note="Poisson probabilities are live; league-level walk-forward ROI is next.",
+                note=(
+                    "Poisson is live; the calibrated challenger improved it but remains below "
+                    "the closing-market baseline."
+                ),
             ),
             MarketReadinessView(
                 key="over_under",
@@ -784,19 +836,25 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
             MarketReadinessView(
                 key="corners",
                 label="Corner totals",
-                stage="blocked",
-                prediction_ready=False,
+                stage="research" if corner_evaluation is not None else "blocked",
+                prediction_ready=corner_evaluation is not None,
                 roi_validated=False,
                 training_rows=corners,
                 odds_rows=0,
-                note="Outcome data is strong; a count model and historical corner prices are missing.",
+                note=(
+                    "Count accuracy is walk-forward tested; historical corner prices are still "
+                    "missing, so ROI cannot be estimated."
+                    if corner_evaluation is not None
+                    else "Outcome data is strong; a count model and historical corner prices "
+                    "are missing."
+                ),
             ),
         ],
         next_priorities=[
-            "Train calibrated challengers to beat the latest published market benchmark.",
-            "Collect historical BTTS and corner prices before claiming betting ROI.",
+            "Develop a market-residual 1X2 challenger without tuning on the final test fold.",
+            "Collect timestamped BTTS and corner lines/prices before claiming betting ROI.",
             "Ingest 2026/27 fixtures, lineups, injuries, and timestamped prices continuously.",
-            "Run challengers in shadow mode before any promotion or automated staking.",
+            "Run 1X2 and corner models in shadow mode before promotion or automated staking.",
         ],
     )
 
@@ -813,6 +871,20 @@ def latest_model_evaluation(
     if snapshot is None:
         raise HTTPException(status_code=404, detail="no published model evaluation")
     return EvaluationReportView.model_validate(snapshot.payload)
+
+
+@app.get("/model/corners/evaluation/latest", response_model=CornerEvaluationReportView)
+def latest_corner_evaluation(
+    session: Session = Depends(get_session),
+) -> CornerEvaluationReportView:
+    snapshot = session.exec(
+        select(CornerEvaluationSnapshot).order_by(
+            CornerEvaluationSnapshot.generated_at.desc()
+        )
+    ).first()
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="no published corner evaluation")
+    return CornerEvaluationReportView.model_validate(snapshot.payload)
 
 
 # --------------------------------------------------------------------------- #

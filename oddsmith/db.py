@@ -145,6 +145,16 @@ class ModelEvaluationSnapshot(SQLModel, table=True):
     payload: dict = Field(sa_column=Column(JSON))
 
 
+class CornerEvaluationSnapshot(SQLModel, table=True):
+    """Immutable corner count evaluation artifact displayed by Model Lab."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    model_name: str = Field(index=True)
+    generated_at: datetime = Field(index=True)
+    dataset_matches: int
+    payload: dict = Field(sa_column=Column(JSON))
+
+
 _engine = None
 
 

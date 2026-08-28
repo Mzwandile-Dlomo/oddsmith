@@ -164,6 +164,47 @@ export interface EvaluationReportView {
   overall: EvaluationSummaryView;
 }
 
+export interface CornerMetricsView {
+  matches: number;
+  mean_actual: number;
+  mean_prediction: number;
+  mae: number;
+  rmse: number;
+  poisson_deviance: number;
+}
+
+export interface CornerSummaryView {
+  model: CornerMetricsView;
+  baseline: CornerMetricsView;
+  mae_improvement: number;
+  improvement_ci_low: number | null;
+  improvement_ci_high: number | null;
+}
+
+export interface CornerLeagueEvaluationView {
+  league: string;
+  seasons: number;
+  folds: Array<{
+    league: string;
+    test_season: number;
+    train_matches: number;
+    test_matches: number;
+    summary: CornerSummaryView;
+  }>;
+  summary: CornerSummaryView;
+}
+
+export interface CornerEvaluationReportView {
+  generated_at: string;
+  model_name: string;
+  min_train_seasons: number;
+  leagues: CornerLeagueEvaluationView[];
+  overall: CornerSummaryView;
+  odds_rows: number;
+  roi_validated: boolean;
+  limitation: string;
+}
+
 export interface StakingView {
   bankroll: number;
   full_kelly_fraction: number;
