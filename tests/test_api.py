@@ -213,7 +213,7 @@ def test_daily_acca_with_no_model_returns_an_honest_empty_slip(client):
     assert body["legs"] == []
     assert body["target_met"] is False
     assert body["staking"]["recommended_stake"] == 0.0
-    assert "no bet worth making" in body["note"]
+    assert "no historical match data" in body["note"]
 
 
 def test_daily_acca_echoes_its_parameters(client):

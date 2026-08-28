@@ -186,12 +186,19 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
         <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-[#9CA3AF]">
           {data.note}
         </p>
+        <p className="mt-3 text-[11px] text-[#9CA3AF]">
+          {data.fixtures_scanned} fixtures scanned · {data.candidates_scanned} value candidates
+        </p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-[11px] text-[#9CA3AF]">
+        {data.fixtures_scanned} fixtures scanned · {data.candidates_scanned} value candidates ·{" "}
+        {data.pool_size} passed safety filters
+      </p>
       {!data.target_met && (
         <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-[12px] leading-relaxed text-[#78350F]">
           {data.note}

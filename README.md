@@ -1,0 +1,78 @@
+# Oddsmith
+
+Oddsmith is a football decision-support app that compares bookmaker prices with
+an explainable statistical model, then builds the most likely ticket that clears
+a target decimal price (for example, `1.50`). It can also save slips, recommend a
+bankroll-aware stake, and track results.
+
+It does **not** promise daily wins or guaranteed profit. A target price is a
+payout constraint, not a probability. The generator can return “no bet today”
+when the data does not support one.
+
+## What works today
+
+- Live fixtures and odds from The Odds API and API-Football.
+- Modelled markets: straight win (1X2), Over/Under 2.5 goals, and both teams to
+  score.
+- A daily generator that finds the highest-model-probability slip above a chosen
+  target while allowing at most one selection per fixture.
+- Positive-value, minimum-confidence, and implausible-edge filters.
+- Half-Kelly stake sizing with a 25% bankroll cap.
+- Saved slips, settlement, profit/loss, historical results, and backtesting.
+- Provider caching to protect paid API quotas.
+
+Corners are intentionally not modelled yet. They require historical team-level
+corner counts, a separately calibrated model, and a walk-forward backtest. Odds
+alone are not enough to produce a trustworthy corner prediction.
+
+## Run locally
+
+Requirements: Python 3.14, `uv`, Node.js/npm, Docker, and optionally Tilt.
+
+```bash
+cp .env.example .env
+make setup
+make web-setup
+make up
+```
+
+The web app runs at `http://localhost:3000`; the API runs at
+`http://localhost:8137`.
+
+For separate processes:
+
+```bash
+make run
+make web-dev
+```
+
+Add at least one odds-provider key to `.env`. The prediction endpoints also need
+rows in `historicalmatch`; without them the API now reports that the model is
+untrained instead of presenting a generic empty ticket.
+
+## Quality checks
+
+```bash
+make check
+make web-lint
+cd web && npx tsc --noEmit
+```
+
+## Product and revenue direction
+
+A sustainable first product is a subscription for analysis—not selling a
+guarantee:
+
+- Free: fixture browser, manual bet builder, saved slips, and delayed results.
+- Pro: daily target-ticket generator, market filters, model-vs-bookmaker edge,
+  alerts when a valid ticket appears, and bankroll/performance analytics.
+- Later: bookmaker comparison or affiliate revenue where legally permitted,
+  clearly separated from model rankings.
+
+Before charging users, add authentication and per-user data, automated result
+settlement, scheduled daily generation/notifications, a reproducible historical
+data loader, model monitoring, and jurisdiction-specific responsible-gambling
+and affiliate disclosures.
+
+The metrics that matter are out-of-sample calibration, closing-line value, and
+real settled ROI after a meaningful sample—not the number of winning days.
