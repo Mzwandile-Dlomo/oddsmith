@@ -8,7 +8,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from oddsmith import api as api_module
 from oddsmith import db as db_module
 from oddsmith.api import app, get_providers
-from oddsmith.db import HistoricalMatch
+from oddsmith.db import HistoricalMatch, MatchObservation
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider
 
@@ -71,6 +71,64 @@ def test_list_fixtures(client):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["home_team"] == "Arsenal"
+
+
+def test_model_readiness_is_honest_when_dataset_is_empty(client):
+    body = client.get("/model/readiness").json()
+
+    assert body["model_stage"] == "research_baseline"
+    assert body["model_trained"] is False
+    assert body["dataset_matches"] == 0
+    assert all(item["roi_validated"] is False for item in body["markets"])
+
+
+def test_model_readiness_reports_coverage(client):
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            MatchObservation(
+                source_key="test:readiness",
+                source="test",
+                league="EPL",
+                season=2025,
+                kickoff_utc=datetime(2025, 8, 1, tzinfo=UTC),
+                home_team="Arsenal",
+                away_team="Chelsea",
+                home_goals=2,
+                away_goals=1,
+                home_shots=12,
+                away_shots=8,
+                home_corners=6,
+                away_corners=4,
+                home_yellow_cards=1,
+                away_yellow_cards=2,
+                close_home_odds=1.9,
+                close_draw_odds=3.5,
+                close_away_odds=4.2,
+                raw_payload={},
+            )
+        )
+        session.add(
+            HistoricalMatch(
+                league="EPL",
+                season=2025,
+                kickoff_utc=datetime(2025, 8, 1, tzinfo=UTC),
+                home_team="Arsenal",
+                away_team="Chelsea",
+                home_goals=2,
+                away_goals=1,
+            )
+        )
+        session.commit()
+
+    body = client.get("/model/readiness").json()
+    coverage = {item["key"]: item for item in body["coverage"]}
+
+    assert body["model_trained"] is True
+    assert body["dataset_matches"] == 1
+    assert body["leagues"] == 1
+    assert coverage["corners"]["percent"] == 100.0
+    assert coverage["odds_1x2"]["records"] == 1
+    assert coverage["odds_goals"]["records"] == 0
 
 
 def test_create_and_settle_slip_lifecycle(client):

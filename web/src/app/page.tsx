@@ -8,10 +8,37 @@ import { SavedSlips } from "@/components/slips/SavedSlips";
 import { OddsGenerator } from "@/components/generator/OddsGenerator";
 import { DailyAcca } from "@/components/generator/DailyAcca";
 import { ResultsView } from "@/components/history/ResultsView";
+import { ModelLab } from "@/components/model/ModelLab";
 
-type Tab = "build" | "slips" | "daily" | "generate" | "results";
+type Tab = "build" | "slips" | "daily" | "generate" | "model" | "results";
 
-const VALID_TABS: Tab[] = ["build", "slips", "daily", "generate", "results"];
+const VALID_TABS: Tab[] = ["build", "slips", "daily", "generate", "model", "results"];
+const TAB_COPY: Record<Tab, { title: string; description: string }> = {
+  build: {
+    title: "Bet Builder",
+    description: "Browse fixtures, compare prices, and build a manual slip.",
+  },
+  slips: {
+    title: "My Slips",
+    description: "Track stakes, settle selections, and measure actual profit and loss.",
+  },
+  daily: {
+    title: "Daily Target",
+    description: "Build the highest-confidence value slip that clears your target odds.",
+  },
+  generate: {
+    title: "Value Generator",
+    description: "Find positive-EV selections across the available fixture window.",
+  },
+  model: {
+    title: "Model Lab",
+    description: "See the evidence, coverage, limitations, and next validation gates.",
+  },
+  results: {
+    title: "Results Explorer",
+    description: "Inspect historical matches, team form, and the model's source data.",
+  },
+};
 const VALID_TIMEFRAMES: Timeframe[] = ["today", "3days", "7days"];
 const LS_TAB_KEY = "oddsmith_tab";
 const LS_WINDOW_KEY = "oddsmith_window";
@@ -99,14 +126,14 @@ export default function Home() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
         <h1 className="text-xl font-semibold tracking-tight text-[#111827]">
-          Bet Builder
+          {TAB_COPY[tab].title}
         </h1>
         <p className="mt-1 text-sm text-[#6B7280]">
-          Browse fixtures, pick your selections, and build an accumulator.
+          {TAB_COPY[tab].description}
         </p>
       </div>
 
-      <div className="mb-6 flex items-center gap-0 border-b border-[#E5E7EB]">
+      <div className="mb-6 flex items-center gap-0 overflow-x-auto border-b border-[#E5E7EB]">
         <TabButton active={tab === "build"} onClick={() => updateTab("build")}>
           Build
         </TabButton>
@@ -118,6 +145,9 @@ export default function Home() {
         </TabButton>
         <TabButton active={tab === "generate"} onClick={() => updateTab("generate")}>
           Odds Generator
+        </TabButton>
+        <TabButton active={tab === "model"} onClick={() => updateTab("model")}>
+          Model Lab
         </TabButton>
         <TabButton active={tab === "results"} onClick={() => updateTab("results")}>
           Results
@@ -139,6 +169,8 @@ export default function Home() {
         <DailyAcca />
       ) : tab === "generate" ? (
         <OddsGenerator />
+      ) : tab === "model" ? (
+        <ModelLab />
       ) : (
         <ResultsView />
       )}
@@ -158,7 +190,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`-mb-px border-b-2 px-5 py-3 text-sm font-medium transition-colors duration-150 ${
+      className={`-mb-px shrink-0 border-b-2 px-5 py-3 text-sm font-medium transition-colors duration-150 ${
         active
           ? "border-[#6C47FF] text-[#6C47FF]"
           : "border-transparent text-[#6B7280] hover:text-[#111827]"

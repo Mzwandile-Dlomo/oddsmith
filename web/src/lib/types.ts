@@ -74,6 +74,48 @@ export interface BacktestView {
   note: string;
 }
 
+export interface DataCoverageView {
+  key: string;
+  label: string;
+  records: number;
+  percent: number;
+}
+
+export interface LeagueCoverageView {
+  league: string;
+  matches: number;
+  date_from: string;
+  date_to: string;
+}
+
+export interface MarketReadinessView {
+  key: string;
+  label: string;
+  stage: "baseline" | "research" | "blocked";
+  prediction_ready: boolean;
+  roi_validated: boolean;
+  training_rows: number;
+  odds_rows: number;
+  note: string;
+}
+
+export interface ModelReadinessView {
+  model_name: string;
+  model_stage: string;
+  model_trained: boolean;
+  dataset_matches: number;
+  baseline_matches: number;
+  leagues: number;
+  seasons: number;
+  date_from: string | null;
+  date_to: string | null;
+  freshness_days: number | null;
+  coverage: DataCoverageView[];
+  league_coverage: LeagueCoverageView[];
+  markets: MarketReadinessView[];
+  next_priorities: string[];
+}
+
 export interface StakingView {
   bankroll: number;
   full_kelly_fraction: number;

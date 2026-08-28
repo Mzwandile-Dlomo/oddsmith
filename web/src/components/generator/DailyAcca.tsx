@@ -426,14 +426,14 @@ export function DailyAcca() {
               })}
               <span
                 className="flex h-9 cursor-not-allowed items-center rounded-lg border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-3 text-xs font-medium text-[#9CA3AF]"
-                title="Requires historical team-corner data before the model can price it"
+                title="Corner outcomes are loaded; the count model and historical prices are next"
               >
-                Corners · data needed
+                Corners · model pending
               </span>
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-[#9CA3AF]">
-              Corners will only be enabled after team-level corner history is available and
-              backtested. The app will not invent a confidence score from prices alone.
+              Corner outcomes are loaded, but the market stays disabled until its count model
+              and price-based backtest pass validation.
             </p>
           </div>
 

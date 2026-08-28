@@ -20,11 +20,14 @@ from datetime import UTC, datetime, timedelta
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from oddsmith.config import get_settings
 from oddsmith.db import (
     DEFAULT_USER_ID,
+    HistoricalMatch,
+    MatchObservation,
     Slip,
     SlipLeg,
     get_session,
@@ -50,7 +53,6 @@ from oddsmith.odds_model.target_acca import (
     build_target_acca,
 )
 from oddsmith.odds_model.value import ValuePick
-from oddsmith.db import HistoricalMatch
 from oddsmith.history import team_stats
 from oddsmith.slips import (
     LegInput,
@@ -264,6 +266,48 @@ class BacktestView(BaseModel):
     roi: float | None
     value_bets: int
     note: str
+
+
+class DataCoverageView(BaseModel):
+    key: str
+    label: str
+    records: int
+    percent: float
+
+
+class LeagueCoverageView(BaseModel):
+    league: str
+    matches: int
+    date_from: datetime
+    date_to: datetime
+
+
+class MarketReadinessView(BaseModel):
+    key: str
+    label: str
+    stage: str
+    prediction_ready: bool
+    roi_validated: bool
+    training_rows: int
+    odds_rows: int
+    note: str
+
+
+class ModelReadinessView(BaseModel):
+    model_name: str
+    model_stage: str
+    model_trained: bool
+    dataset_matches: int
+    baseline_matches: int
+    leagues: int
+    seasons: int
+    date_from: datetime | None
+    date_to: datetime | None
+    freshness_days: int | None
+    coverage: list[DataCoverageView]
+    league_coverage: list[LeagueCoverageView]
+    markets: list[MarketReadinessView]
+    next_priorities: list[str]
 
 
 class StakingView(BaseModel):
@@ -552,6 +596,160 @@ def model_backtest(
     )
 
 
+def _observation_count(session: Session, *conditions: object) -> int:
+    query = select(func.count()).select_from(MatchObservation)
+    if conditions:
+        query = query.where(*conditions)
+    return int(session.exec(query).one())
+
+
+def _coverage(key: str, label: str, records: int, total: int) -> DataCoverageView:
+    return DataCoverageView(
+        key=key,
+        label=label,
+        records=records,
+        percent=round(records / total * 100, 1) if total else 0.0,
+    )
+
+
+@app.get("/model/readiness", response_model=ModelReadinessView)
+def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessView:
+    """Expose evidence and gaps behind the model, not a cosmetic "AI ready" flag."""
+    total = _observation_count(session)
+    baseline_total = int(session.exec(select(func.count()).select_from(HistoricalMatch)).one())
+    summary = session.exec(
+        select(
+            func.count(func.distinct(MatchObservation.league)),
+            func.count(func.distinct(MatchObservation.season)),
+            func.min(MatchObservation.kickoff_utc),
+            func.max(MatchObservation.kickoff_utc),
+        )
+    ).one()
+    league_count, season_count, date_from, date_to = summary
+
+    corners = _observation_count(
+        session,
+        MatchObservation.home_corners.is_not(None),
+        MatchObservation.away_corners.is_not(None),
+    )
+    shots = _observation_count(
+        session,
+        MatchObservation.home_shots.is_not(None),
+        MatchObservation.away_shots.is_not(None),
+    )
+    odds_1x2 = _observation_count(
+        session,
+        MatchObservation.close_home_odds.is_not(None),
+        MatchObservation.close_draw_odds.is_not(None),
+        MatchObservation.close_away_odds.is_not(None),
+    )
+    odds_goals = _observation_count(
+        session,
+        MatchObservation.close_over_2_5_odds.is_not(None),
+        MatchObservation.close_under_2_5_odds.is_not(None),
+    )
+    cards = _observation_count(
+        session,
+        MatchObservation.home_yellow_cards.is_not(None),
+        MatchObservation.away_yellow_cards.is_not(None),
+    )
+
+    league_rows = session.exec(
+        select(
+            MatchObservation.league,
+            func.count(MatchObservation.id),
+            func.min(MatchObservation.kickoff_utc),
+            func.max(MatchObservation.kickoff_utc),
+        )
+        .group_by(MatchObservation.league)
+        .order_by(MatchObservation.league)
+    ).all()
+    league_coverage = [
+        LeagueCoverageView(
+            league=league,
+            matches=int(matches),
+            date_from=first,
+            date_to=last,
+        )
+        for league, matches, first, last in league_rows
+    ]
+
+    latest = date_to
+    if latest is not None and latest.tzinfo is None:
+        latest = latest.replace(tzinfo=UTC)
+    freshness_days = max((datetime.now(UTC) - latest).days, 0) if latest else None
+
+    return ModelReadinessView(
+        model_name="Dixon-Coles Poisson",
+        model_stage="research_baseline",
+        model_trained=baseline_total > 0,
+        dataset_matches=total,
+        baseline_matches=baseline_total,
+        leagues=int(league_count or 0),
+        seasons=int(season_count or 0),
+        date_from=date_from,
+        date_to=date_to,
+        freshness_days=freshness_days,
+        coverage=[
+            _coverage("results", "Match results", total, total),
+            _coverage("corners", "Corner outcomes", corners, total),
+            _coverage("shots", "Shot statistics", shots, total),
+            _coverage("cards", "Card statistics", cards, total),
+            _coverage("odds_1x2", "Closing 1X2 prices", odds_1x2, total),
+            _coverage("odds_goals", "Closing O/U 2.5 prices", odds_goals, total),
+            _coverage("odds_btts", "Historical BTTS prices", 0, total),
+            _coverage("odds_corners", "Historical corner prices", 0, total),
+        ],
+        league_coverage=league_coverage,
+        markets=[
+            MarketReadinessView(
+                key="match_winner",
+                label="Match winner (1X2)",
+                stage="baseline",
+                prediction_ready=baseline_total > 0,
+                roi_validated=False,
+                training_rows=total,
+                odds_rows=odds_1x2,
+                note="Poisson probabilities are live; league-level walk-forward ROI is next.",
+            ),
+            MarketReadinessView(
+                key="over_under",
+                label="Goals O/U 2.5",
+                stage="baseline",
+                prediction_ready=baseline_total > 0,
+                roi_validated=False,
+                training_rows=total,
+                odds_rows=odds_goals,
+                note="Outcome coverage is complete, but historical price coverage is partial.",
+            ),
+            MarketReadinessView(
+                key="btts",
+                label="Both teams to score",
+                stage="research",
+                prediction_ready=baseline_total > 0,
+                roi_validated=False,
+                training_rows=total,
+                odds_rows=0,
+                note="Probabilities can be modelled; historical BTTS prices are missing for ROI.",
+            ),
+            MarketReadinessView(
+                key="corners",
+                label="Corner totals",
+                stage="blocked",
+                prediction_ready=False,
+                roi_validated=False,
+                training_rows=corners,
+                odds_rows=0,
+                note="Outcome data is strong; a count model and historical corner prices are missing.",
+            ),
+        ],
+        next_priorities=[
+            "Run league-by-league expanding-window validation against closing 1X2 prices.",
+            "Collect historical BTTS and corner prices before claiming betting ROI.",
+            "Ingest 2026/27 fixtures, lineups, injuries, and timestamped prices continuously.",
+            "Train calibrated boosted-tree challengers and promote only if they beat the market baseline.",
+        ],
+    )
 # --------------------------------------------------------------------------- #
 # History: past results + derived team stats
 # --------------------------------------------------------------------------- #

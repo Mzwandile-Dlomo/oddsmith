@@ -5,6 +5,7 @@ import type {
   Fixture,
   HistoryMatch,
   MarketType,
+  ModelReadinessView,
   SlipCreate,
   SlipUpdate,
   SlipView,
@@ -78,6 +79,10 @@ export async function fetchWeekendAcca(legs: number): Promise<AccaView> {
 
 export async function fetchBacktest(): Promise<BacktestView> {
   return request<BacktestView>("/model/backtest");
+}
+
+export async function fetchModelReadiness(): Promise<ModelReadinessView> {
+  return request<ModelReadinessView>("/model/readiness");
 }
 
 export interface DailyAccaParams {
