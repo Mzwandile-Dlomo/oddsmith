@@ -25,6 +25,33 @@ Corners are intentionally not modelled yet. They require historical team-level
 corner counts, a separately calibrated model, and a walk-forward backtest. Odds
 alone are not enough to produce a trustworthy corner prediction.
 
+## Build the training dataset
+
+Oddsmith can download Football-Data CSV archives into the enriched
+`matchobservation` table. The default divisions are EPL, Bundesliga, La Liga,
+Serie A, and Ligue 1. Without `--write`, the command only downloads and validates:
+
+```bash
+uv run --active python scripts/import_football_data.py \
+  --season-code 2223 --season-code 2324 --season-code 2425
+```
+
+After checking the row totals, explicitly write to the database configured by
+`DATABASE_URL`:
+
+```bash
+uv run --active python scripts/import_football_data.py \
+  --season-code 2223 --season-code 2324 --season-code 2425 --write
+```
+
+Imports are idempotent. Enriched rows preserve source metadata and the raw CSV
+record, while new matches are also copied into `historicalmatch` for the current
+Poisson model. Missing statistics remain null rather than being converted to
+false zeroes.
+
+The leakage-safe feature pipeline and model promotion rules are documented in
+[docs/MODEL_STRATEGY.md](docs/MODEL_STRATEGY.md).
+
 ## Run locally
 
 Requirements: Python 3.14, `uv`, Node.js/npm, Docker, and optionally Tilt.

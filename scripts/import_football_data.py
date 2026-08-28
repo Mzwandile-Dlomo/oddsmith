@@ -2,7 +2,7 @@
 
 Example — five major European leagues, two seasons:
     uv run --active python scripts/import_football_data.py \
-      --season-code 2425 --season-code 2526
+      --season-code 2425 --season-code 2526 --write
 
 Season codes use Football-Data's YYZZ convention. Imports are idempotent and
 also populate the compact HistoricalMatch table used by the Poisson baseline.
@@ -42,7 +42,11 @@ def _parser() -> argparse.ArgumentParser:
         help="comma-separated Football-Data division codes",
     )
     parser.add_argument("--database-url", help="defaults to DATABASE_URL from .env")
-    parser.add_argument("--dry-run", action="store_true", help="download and validate only")
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="write to the configured database; without this flag the command is a dry run",
+    )
     return parser
 
 
@@ -54,7 +58,7 @@ def main() -> int:
         return 2
 
     engine = create_engine(args.database_url or get_settings().database_url)
-    if not args.dry_run:
+    if args.write:
         SQLModel.metadata.create_all(engine)
 
     totals = {"parsed": 0, "inserted": 0, "existing": 0, "baseline": 0, "rejected": 0}
@@ -66,7 +70,7 @@ def main() -> int:
                 response = client.get(url)
                 response.raise_for_status()
                 rows, rejected = parse_csv(response.text, season=season)
-                if args.dry_run:
+                if not args.write:
                     print(f"{season_code}/{division}: parsed={len(rows)} rejected={rejected}")
                     totals["parsed"] += len(rows)
                     totals["rejected"] += rejected
