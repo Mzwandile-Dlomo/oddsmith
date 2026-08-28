@@ -64,17 +64,15 @@ def capture_odds_snapshots(
                     )
                 )
     keys = [row.snapshot_key for row in candidates]
-    existing = (
-        set(
+    existing: set[str] = set()
+    for start in range(0, len(keys), 500):
+        existing.update(
             session.exec(
                 select(OddsSnapshot.snapshot_key).where(
-                    OddsSnapshot.snapshot_key.in_(keys)
+                    OddsSnapshot.snapshot_key.in_(keys[start : start + 500])
                 )
             )
         )
-        if keys
-        else set()
-    )
     added = 0
     for row in candidates:
         if row.snapshot_key in existing:

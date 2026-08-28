@@ -117,6 +117,28 @@ def test_snapshot_capture_is_idempotent_for_same_observation(session):
     assert all(snapshot.hours_to_kickoff == 24.0 for snapshot in snapshots)
 
 
+def test_post_kickoff_prices_are_not_stored_as_prematch_snapshots(session):
+    fixture = Fixture(
+        id="test:live",
+        home_team="Home",
+        away_team="Away",
+        kickoff_utc=datetime(2026, 9, 1, 15, tzinfo=UTC),
+        provider="test",
+        markets=[
+            Market(
+                type=MarketType.MATCH_WINNER,
+                outcomes=[Outcome(name="Home", price=2.0)],
+            )
+        ],
+    )
+
+    cache_module._upsert_fixtures(
+        session, [fixture], datetime(2026, 9, 1, 16, tzinfo=UTC)
+    )
+
+    assert list(session.exec(select(OddsSnapshot))) == []
+
+
 async def test_hit_does_not_call_provider(session, settings, monkeypatch):
     _patch_settings(monkeypatch, settings)
     provider = CountingProvider(fixture_count=2)

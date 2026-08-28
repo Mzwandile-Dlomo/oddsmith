@@ -101,6 +101,21 @@ overall but not reliable in Bundesliga or Ligue 1. This validates a small amount
 of count signal, not a betting edge: the dataset contains zero historical corner
 lines/prices, so corner ROI remains untestable and corner tickets remain blocked.
 
+New provider refreshes now append one `OddsSnapshot` row per bookmaker outcome,
+including capture time and hours before kickoff. This makes opening, 24-hour,
+and closing-horizon evaluation possible once enough fixtures have accumulated.
+Run `scripts/capture_odds.py` on a schedule; its default deliberately uses only
+The Odds API because API-Football can consume one odds request per fixture.
+
+The standard bulk endpoint supplies 1X2 and goals totals. BTTS and total-corner
+markets require separate provider support or per-event endpoints, so adding the
+snapshot table does not imply those markets are already being collected.
+
+The initial quota-free backfill recovered 8,632 outcome prices across 64 cached
+fixtures: 6,672 match-winner outcomes and 1,960 goals-total outcomes, observed
+between 2.3 and 74.0 hours before kickoff. It recovered no BTTS or corner prices,
+so those ROI gates remain blocked.
+
 ## Immediate sequence
 
 1. Keep the latest full season untouched while iterating on challenger features.
