@@ -86,6 +86,55 @@ class HistoricalMatch(SQLModel, table=True):
     away_goals: int
 
 
+class MatchObservation(SQLModel, table=True):
+    """Enriched, source-traceable row used to build leakage-safe ML features.
+
+    ``HistoricalMatch`` remains the compact input to the Poisson baseline. This
+    table keeps the wider evidence needed for goals, corners, cards, and 1X2 ML
+    models without forcing a destructive migration of the existing table.
+    Nullable fields are deliberate: historical providers and leagues have
+    different coverage, and an unrecorded statistic must never be treated as 0.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    source_key: str = Field(index=True, unique=True)
+    source: str = Field(index=True)
+    source_league_code: str | None = Field(default=None, index=True)
+    league: str = Field(index=True)
+    season: int = Field(index=True)
+    kickoff_utc: datetime = Field(index=True)
+    home_team: str = Field(index=True)
+    away_team: str = Field(index=True)
+    referee: str | None = None
+
+    home_goals: int
+    away_goals: int
+    half_time_home_goals: int | None = None
+    half_time_away_goals: int | None = None
+
+    home_shots: int | None = None
+    away_shots: int | None = None
+    home_shots_on_target: int | None = None
+    away_shots_on_target: int | None = None
+    home_corners: int | None = None
+    away_corners: int | None = None
+    home_fouls: int | None = None
+    away_fouls: int | None = None
+    home_yellow_cards: int | None = None
+    away_yellow_cards: int | None = None
+    home_red_cards: int | None = None
+    away_red_cards: int | None = None
+
+    close_home_odds: float | None = None
+    close_draw_odds: float | None = None
+    close_away_odds: float | None = None
+    close_over_2_5_odds: float | None = None
+    close_under_2_5_odds: float | None = None
+
+    imported_at: datetime = Field(default_factory=_now, index=True)
+    raw_payload: dict = Field(sa_column=Column(JSON))
+
+
 _engine = None
 
 
