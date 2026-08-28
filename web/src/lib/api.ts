@@ -2,6 +2,7 @@ import type {
   AccaView,
   BacktestView,
   DailyAccaView,
+  EvaluationReportView,
   Fixture,
   HistoryMatch,
   MarketType,
@@ -83,6 +84,10 @@ export async function fetchBacktest(): Promise<BacktestView> {
 
 export async function fetchModelReadiness(): Promise<ModelReadinessView> {
   return request<ModelReadinessView>("/model/readiness");
+}
+
+export async function fetchLatestEvaluation(): Promise<EvaluationReportView> {
+  return request<EvaluationReportView>("/model/evaluation/latest");
 }
 
 export interface DailyAccaParams {

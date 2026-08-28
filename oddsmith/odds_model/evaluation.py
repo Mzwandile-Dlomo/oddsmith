@@ -184,7 +184,7 @@ def _strategy_metrics(
     if bootstrap_samples > 0:
         rng = Random(seed)
         bootstrapped = [
-            sum(rng.choice(profits) for _ in profits) / len(profits)
+            sum(rng.choices(profits, k=len(profits))) / len(profits)
             for _ in range(bootstrap_samples)
         ]
         interval_low = round(_percentile(bootstrapped, 0.025), 4)

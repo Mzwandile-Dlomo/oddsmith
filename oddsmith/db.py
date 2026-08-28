@@ -135,6 +135,16 @@ class MatchObservation(SQLModel, table=True):
     raw_payload: dict = Field(sa_column=Column(JSON))
 
 
+class ModelEvaluationSnapshot(SQLModel, table=True):
+    """Immutable published evaluation artifact displayed by Model Lab."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    model_name: str = Field(index=True)
+    generated_at: datetime = Field(index=True)
+    dataset_matches: int
+    payload: dict = Field(sa_column=Column(JSON))
+
+
 _engine = None
 
 

@@ -8,7 +8,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from oddsmith import api as api_module
 from oddsmith import db as db_module
 from oddsmith.api import app, get_providers
-from oddsmith.db import HistoricalMatch, MatchObservation
+from oddsmith.db import HistoricalMatch, MatchObservation, ModelEvaluationSnapshot
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider
 
@@ -129,6 +129,53 @@ def test_model_readiness_reports_coverage(client):
     assert coverage["corners"]["percent"] == 100.0
     assert coverage["odds_1x2"]["records"] == 1
     assert coverage["odds_goals"]["records"] == 0
+
+
+def test_latest_model_evaluation_requires_a_published_snapshot(client):
+    assert client.get("/model/evaluation/latest").status_code == 404
+
+
+def test_latest_model_evaluation_returns_published_payload(client):
+    generated_at = datetime(2026, 8, 29, tzinfo=UTC)
+    metrics = {
+        "matches": 100,
+        "accuracy": 0.5,
+        "log_loss": 1.0,
+        "brier": 0.6,
+        "calibration_error": 0.02,
+    }
+    strategy = {
+        "bets": 20,
+        "wins": 8,
+        "profit": -1.0,
+        "roi": -0.05,
+        "roi_ci_low": -0.2,
+        "roi_ci_high": 0.1,
+    }
+    payload = {
+        "generated_at": generated_at.isoformat(),
+        "model_name": "Dixon-Coles Poisson",
+        "min_train_seasons": 4,
+        "min_edge": 0.03,
+        "max_edge": 0.15,
+        "leagues": [],
+        "overall": {"model": metrics, "market": metrics, "strategy": strategy},
+    }
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            ModelEvaluationSnapshot(
+                model_name="Dixon-Coles Poisson",
+                generated_at=generated_at,
+                dataset_matches=100,
+                payload=payload,
+            )
+        )
+        session.commit()
+
+    body = client.get("/model/evaluation/latest").json()
+
+    assert body["model_name"] == "Dixon-Coles Poisson"
+    assert body["overall"]["strategy"]["roi"] == -0.05
 
 
 def test_create_and_settle_slip_lifecycle(client):

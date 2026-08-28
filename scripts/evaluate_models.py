@@ -8,12 +8,12 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from sqlmodel import Session, select
+from sqlmodel import SQLModel, Session, select
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from oddsmith.config import get_settings
-from oddsmith.db import MatchObservation, get_engine
+from oddsmith.db import MatchObservation, ModelEvaluationSnapshot, get_engine
 from oddsmith.odds_model.evaluation import EvaluationMatch, evaluate_expanding_window
 
 
@@ -24,27 +24,58 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-edge", type=float, default=0.15)
     parser.add_argument("--bootstrap-samples", type=int, default=1000)
     parser.add_argument("--output", type=Path, help="optional JSON output path")
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="store this immutable evaluation snapshot in the configured database",
+    )
     return parser
 
 
 def main() -> int:
     args = _parser().parse_args()
     with Session(get_engine()) as session:
-        rows = list(session.exec(select(MatchObservation).order_by(MatchObservation.kickoff_utc)))
+        rows = list(
+            session.exec(
+                select(
+                    MatchObservation.league,
+                    MatchObservation.season,
+                    MatchObservation.kickoff_utc,
+                    MatchObservation.home_team,
+                    MatchObservation.away_team,
+                    MatchObservation.home_goals,
+                    MatchObservation.away_goals,
+                    MatchObservation.close_home_odds,
+                    MatchObservation.close_draw_odds,
+                    MatchObservation.close_away_odds,
+                ).order_by(MatchObservation.kickoff_utc)
+            )
+        )
     matches = [
         EvaluationMatch(
-            league=row.league,
-            season=row.season,
-            kickoff_utc=row.kickoff_utc,
-            home_team=row.home_team,
-            away_team=row.away_team,
-            home_goals=row.home_goals,
-            away_goals=row.away_goals,
-            odds_home=row.close_home_odds,
-            odds_draw=row.close_draw_odds,
-            odds_away=row.close_away_odds,
+            league=league,
+            season=season,
+            kickoff_utc=kickoff_utc,
+            home_team=home_team,
+            away_team=away_team,
+            home_goals=home_goals,
+            away_goals=away_goals,
+            odds_home=odds_home,
+            odds_draw=odds_draw,
+            odds_away=odds_away,
         )
-        for row in rows
+        for (
+            league,
+            season,
+            kickoff_utc,
+            home_team,
+            away_team,
+            home_goals,
+            away_goals,
+            odds_home,
+            odds_draw,
+            odds_away,
+        ) in rows
     ]
     settings = get_settings()
     report = evaluate_expanding_window(
@@ -57,7 +88,22 @@ def main() -> int:
         max_edge=args.max_edge,
         bootstrap_samples=args.bootstrap_samples,
     )
-    document = json.dumps(asdict(report), default=str, indent=2)
+    payload = json.loads(json.dumps(asdict(report), default=str))
+    document = json.dumps(payload, indent=2)
+    if args.publish:
+        engine = get_engine()
+        SQLModel.metadata.create_all(engine)
+        with Session(engine) as session:
+            session.add(
+                ModelEvaluationSnapshot(
+                    model_name=report.model_name,
+                    generated_at=report.generated_at,
+                    dataset_matches=len(matches),
+                    payload=payload,
+                )
+            )
+            session.commit()
+        print("Published evaluation snapshot.")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(document + "\n", encoding="utf-8")

@@ -11,8 +11,12 @@ import {
   Database,
   ShieldAlert,
 } from "lucide-react";
-import { fetchModelReadiness } from "@/lib/api";
-import type { MarketReadinessView, ModelReadinessView } from "@/lib/types";
+import { fetchLatestEvaluation, fetchModelReadiness } from "@/lib/api";
+import type {
+  EvaluationReportView,
+  MarketReadinessView,
+  ModelReadinessView,
+} from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 
 function number(value: number): string {
@@ -26,6 +30,12 @@ function date(value: string | null): string {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+}
+
+function percent(value: number | null, signed = false): string {
+  if (value === null) return "—";
+  const rendered = `${(value * 100).toFixed(2)}%`;
+  return signed && value > 0 ? `+${rendered}` : rendered;
 }
 
 function StageBadge({ stage }: { stage: MarketReadinessView["stage"] }) {
@@ -144,7 +154,128 @@ function MarketCard({ market }: { market: MarketReadinessView }) {
   );
 }
 
-function ModelLabContent({ data }: { data: ModelReadinessView }) {
+function Validation({ report }: { report?: EvaluationReportView }) {
+  if (!report) {
+    return (
+      <section className="rounded-2xl border border-dashed border-[#D1D5DB] bg-[#F9FAFB] p-5">
+        <h3 className="text-sm font-semibold text-[#111827]">Latest validation</h3>
+        <p className="mt-1 text-xs text-[#6B7280]">
+          No evaluation has been published yet. Model claims remain unvalidated.
+        </p>
+      </section>
+    );
+  }
+
+  const { model, market, strategy } = report.overall;
+  const beatsMarket = model.log_loss < market.log_loss && model.brier < market.brier;
+  const metrics = [
+    { label: "Accuracy", model: percent(model.accuracy), market: percent(market.accuracy) },
+    { label: "Log loss ↓", model: model.log_loss.toFixed(4), market: market.log_loss.toFixed(4) },
+    { label: "Brier ↓", model: model.brier.toFixed(4), market: market.brier.toFixed(4) },
+    {
+      label: "Calibration error ↓",
+      model: percent(model.calibration_error),
+      market: percent(market.calibration_error),
+    },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+      <div className="flex flex-col justify-between gap-3 border-b border-[#E5E7EB] px-5 py-4 sm:flex-row sm:items-center">
+        <div>
+          <h3 className="text-sm font-semibold text-[#111827]">Latest unseen-season validation</h3>
+          <p className="mt-1 text-xs text-[#9CA3AF]">
+            {number(model.matches)} matches · {report.leagues.reduce((n, item) => n + item.folds.length, 0)} folds · published {date(report.generated_at)}
+          </p>
+        </div>
+        <span
+          className={`self-start rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-widest sm:self-center ${
+            beatsMarket
+              ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
+              : "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
+          }`}
+        >
+          {beatsMarket ? "Beats market baseline" : "Below market baseline"}
+        </span>
+      </div>
+
+      <div className="grid lg:grid-cols-[0.9fr_1.3fr]">
+        <div className="border-b border-[#E5E7EB] p-5 lg:border-r lg:border-b-0">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-x-5 gap-y-3 text-xs">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Metric</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Model</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Market</p>
+            {metrics.map((metric) => (
+              <div key={metric.label} className="contents">
+                <p className="text-[#6B7280]">{metric.label}</p>
+                <p className="text-right font-semibold tabular-nums text-[#111827]">{metric.model}</p>
+                <p className="text-right font-semibold tabular-nums text-[#111827]">{metric.market}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-3.5">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-[#D97706]" />
+              <p className="text-xs font-semibold text-[#92400E]">Value strategy result</p>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[#B45309]">Bets</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-[#78350F]">{number(strategy.bets)}</p>
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[#B45309]">ROI</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-[#78350F]">{percent(strategy.roi, true)}</p>
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[#B45309]">95% interval</p>
+                <p className="mt-1 text-[11px] font-bold tabular-nums text-[#78350F]">
+                  {percent(strategy.roi_ci_low)} to {percent(strategy.roi_ci_high)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[580px] text-left text-xs">
+            <thead className="bg-[#F9FAFB] text-[10px] uppercase tracking-widest text-[#9CA3AF]">
+              <tr>
+                <th className="px-5 py-2.5 font-semibold">League</th>
+                <th className="px-4 py-2.5 font-semibold">Model log loss</th>
+                <th className="px-4 py-2.5 font-semibold">Market</th>
+                <th className="px-4 py-2.5 font-semibold">ROI</th>
+                <th className="px-5 py-2.5 font-semibold">95% interval</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F3F4F6]">
+              {report.leagues.map((league) => (
+                <tr key={league.league}>
+                  <td className="px-5 py-3 font-medium text-[#111827]">{league.league}</td>
+                  <td className="px-4 py-3 tabular-nums text-[#374151]">{league.summary.model.log_loss.toFixed(4)}</td>
+                  <td className="px-4 py-3 tabular-nums text-[#374151]">{league.summary.market.log_loss.toFixed(4)}</td>
+                  <td className="px-4 py-3 tabular-nums text-[#374151]">{percent(league.summary.strategy.roi, true)}</td>
+                  <td className="px-5 py-3 tabular-nums text-[#6B7280]">
+                    {percent(league.summary.strategy.roi_ci_low)} to {percent(league.summary.strategy.roi_ci_high)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ModelLabContent({
+  data,
+  evaluation,
+}: {
+  data: ModelReadinessView;
+  evaluation?: EvaluationReportView;
+}) {
   const stale = data.freshness_days !== null && data.freshness_days > 45;
   return (
     <div className="flex flex-col gap-5">
@@ -175,6 +306,7 @@ function ModelLabContent({ data }: { data: ModelReadinessView }) {
       )}
 
       <Summary data={data} />
+      <Validation report={evaluation} />
       <Coverage data={data} />
 
       <section>
@@ -244,6 +376,12 @@ export function ModelLab() {
     queryFn: fetchModelReadiness,
     staleTime: 5 * 60_000,
   });
+  const evaluationQuery = useQuery({
+    queryKey: ["model-evaluation-latest"],
+    queryFn: fetchLatestEvaluation,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
   if (query.isLoading) {
     return (
@@ -260,5 +398,5 @@ export function ModelLab() {
       </div>
     );
   }
-  return <ModelLabContent data={query.data} />;
+  return <ModelLabContent data={query.data} evaluation={evaluationQuery.data} />;
 }

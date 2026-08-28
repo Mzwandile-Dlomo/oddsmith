@@ -116,6 +116,54 @@ export interface ModelReadinessView {
   next_priorities: string[];
 }
 
+export interface ProbabilityMetricsView {
+  matches: number;
+  accuracy: number;
+  log_loss: number;
+  brier: number;
+  calibration_error: number;
+}
+
+export interface StrategyMetricsView {
+  bets: number;
+  wins: number;
+  profit: number;
+  roi: number | null;
+  roi_ci_low: number | null;
+  roi_ci_high: number | null;
+}
+
+export interface EvaluationSummaryView {
+  model: ProbabilityMetricsView;
+  market: ProbabilityMetricsView;
+  strategy: StrategyMetricsView;
+}
+
+export interface FoldEvaluationView {
+  league: string;
+  test_season: number;
+  train_matches: number;
+  test_matches: number;
+  summary: EvaluationSummaryView;
+}
+
+export interface LeagueEvaluationView {
+  league: string;
+  seasons: number;
+  folds: FoldEvaluationView[];
+  summary: EvaluationSummaryView;
+}
+
+export interface EvaluationReportView {
+  generated_at: string;
+  model_name: string;
+  min_train_seasons: number;
+  min_edge: number;
+  max_edge: number;
+  leagues: LeagueEvaluationView[];
+  overall: EvaluationSummaryView;
+}
+
 export interface StakingView {
   bankroll: number;
   full_kelly_fraction: number;

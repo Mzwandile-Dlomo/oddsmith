@@ -28,6 +28,7 @@ from oddsmith.db import (
     DEFAULT_USER_ID,
     HistoricalMatch,
     MatchObservation,
+    ModelEvaluationSnapshot,
     Slip,
     SlipLeg,
     get_session,
@@ -308,6 +309,54 @@ class ModelReadinessView(BaseModel):
     league_coverage: list[LeagueCoverageView]
     markets: list[MarketReadinessView]
     next_priorities: list[str]
+
+
+class ProbabilityMetricsView(BaseModel):
+    matches: int
+    accuracy: float
+    log_loss: float
+    brier: float
+    calibration_error: float
+
+
+class StrategyMetricsView(BaseModel):
+    bets: int
+    wins: int
+    profit: float
+    roi: float | None
+    roi_ci_low: float | None
+    roi_ci_high: float | None
+
+
+class EvaluationSummaryView(BaseModel):
+    model: ProbabilityMetricsView
+    market: ProbabilityMetricsView
+    strategy: StrategyMetricsView
+
+
+class FoldEvaluationView(BaseModel):
+    league: str
+    test_season: int
+    train_matches: int
+    test_matches: int
+    summary: EvaluationSummaryView
+
+
+class LeagueEvaluationView(BaseModel):
+    league: str
+    seasons: int
+    folds: list[FoldEvaluationView]
+    summary: EvaluationSummaryView
+
+
+class EvaluationReportView(BaseModel):
+    generated_at: datetime
+    model_name: str
+    min_train_seasons: int
+    min_edge: float
+    max_edge: float
+    leagues: list[LeagueEvaluationView]
+    overall: EvaluationSummaryView
 
 
 class StakingView(BaseModel):
@@ -744,12 +793,28 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
             ),
         ],
         next_priorities=[
-            "Run league-by-league expanding-window validation against closing 1X2 prices.",
+            "Train calibrated challengers to beat the latest published market benchmark.",
             "Collect historical BTTS and corner prices before claiming betting ROI.",
             "Ingest 2026/27 fixtures, lineups, injuries, and timestamped prices continuously.",
-            "Train calibrated boosted-tree challengers and promote only if they beat the market baseline.",
+            "Run challengers in shadow mode before any promotion or automated staking.",
         ],
     )
+
+
+@app.get("/model/evaluation/latest", response_model=EvaluationReportView)
+def latest_model_evaluation(
+    session: Session = Depends(get_session),
+) -> EvaluationReportView:
+    snapshot = session.exec(
+        select(ModelEvaluationSnapshot).order_by(
+            ModelEvaluationSnapshot.generated_at.desc()
+        )
+    ).first()
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="no published model evaluation")
+    return EvaluationReportView.model_validate(snapshot.payload)
+
+
 # --------------------------------------------------------------------------- #
 # History: past results + derived team stats
 # --------------------------------------------------------------------------- #

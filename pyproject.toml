@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "psycopg[binary]>=3.2",
+    "scikit-learn>=1.9,<2",
 ]
 
 [dependency-groups]
