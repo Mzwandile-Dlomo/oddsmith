@@ -133,6 +133,12 @@ uv run --active python scripts/collect_additional_odds.py \
 The command records the provider-reported credits used and remaining. Schedule
 it only after confirming the account plan and preferred bookmaker regions.
 
+The first capped live run requested five of 79 discovered events. It used 18 of
+the allowed 20 credits, leaving 434, and stored 254 outcomes: 114 BTTS prices
+across five fixtures and 140 total-corner prices across four fixtures. These
+were captured 0.7–13.7 hours before kickoff. This proves collection works; it is
+far too small and too close to kickoff to validate ROI or a 24-hour strategy.
+
 ## Immediate sequence
 
 1. Keep the latest full season untouched while iterating on challenger features.

@@ -275,7 +275,13 @@ function Validation({ report }: { report?: EvaluationReportView }) {
   );
 }
 
-function CornerValidation({ report }: { report?: CornerEvaluationReportView }) {
+function CornerValidation({
+  report,
+  priceFixtures,
+}: {
+  report?: CornerEvaluationReportView;
+  priceFixtures: number;
+}) {
   if (!report) return null;
   const { model, baseline } = report.overall;
   const improvementIsReliable =
@@ -291,7 +297,7 @@ function CornerValidation({ report }: { report?: CornerEvaluationReportView }) {
           </p>
         </div>
         <span className="self-start rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-[#92400E] sm:self-center">
-          ROI unavailable · {number(report.odds_rows)} price rows
+          ROI unavailable · {number(priceFixtures)} priced fixtures
         </span>
       </div>
 
@@ -310,7 +316,11 @@ function CornerValidation({ report }: { report?: CornerEvaluationReportView }) {
           <p className={`mt-3 text-xs font-medium ${improvementIsReliable ? "text-[#047857]" : "text-[#92400E]"}`}>
             Paired MAE gain {report.overall.mae_improvement.toFixed(4)} · 95% interval {report.overall.improvement_ci_low?.toFixed(4) ?? "—"} to {report.overall.improvement_ci_high?.toFixed(4) ?? "—"}
           </p>
-          <p className="mt-3 text-[11px] leading-relaxed text-[#6B7280]">{report.limitation}</p>
+          <p className="mt-3 text-[11px] leading-relaxed text-[#6B7280]">
+            {priceFixtures > 0
+              ? `${number(priceFixtures)} fixtures now have captured corner prices. ROI remains unavailable until those fixtures settle and the sample becomes meaningful.`
+              : report.limitation}
+          </p>
         </div>
 
         <div className="overflow-x-auto">
@@ -354,6 +364,8 @@ function ModelLabContent({
   cornerEvaluation?: CornerEvaluationReportView;
 }) {
   const stale = data.freshness_days !== null && data.freshness_days > 45;
+  const cornerPriceFixtures =
+    data.markets.find((market) => market.key === "corners")?.odds_rows ?? 0;
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col justify-between gap-3 rounded-2xl border border-[#DDD6FE] bg-gradient-to-br from-white to-[#F5F3FF] p-5 sm:flex-row sm:items-center">
@@ -384,7 +396,7 @@ function ModelLabContent({
 
       <Summary data={data} />
       <Validation report={evaluation} />
-      <CornerValidation report={cornerEvaluation} />
+      <CornerValidation report={cornerEvaluation} priceFixtures={cornerPriceFixtures} />
       <Coverage data={data} />
 
       <section>
