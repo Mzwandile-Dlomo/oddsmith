@@ -346,3 +346,35 @@ export interface TeamStatsView {
   away_record: string;
   form: string[];
 }
+
+export interface CalendarDayModel {
+  candidate_count: number;
+  target_met: boolean;
+  combined_odds: number;
+  combined_model_prob: number;
+  leg_count: number;
+}
+
+export interface CalendarDay {
+  date: string;
+  fixture_count: number;
+  leagues: string[];
+  slip_count: number;
+  pending_count: number;
+  won_count: number;
+  lost_count: number;
+  staked: number;
+  profit_loss: number;
+  model: CalendarDayModel | null;
+}
+
+export interface CalendarView {
+  date_from: string;
+  date_to: string;
+  days: CalendarDay[];
+  model_trained: boolean;
+  fixture_count: number;
+  profit_loss: number;
+  staked: number;
+  settled_slip_count: number;
+}

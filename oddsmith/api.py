@@ -6,6 +6,7 @@ Routes:
   GET   /fixtures/{fixture_id}/markets - markets for one fixture
   GET   /acca/weekend               - auto-built value acca (long price, low strike rate)
   GET   /acca/daily                 - short-priced "banker" slip + Kelly stake sizing
+  GET   /calendar                   - per-day fixture/slip/model summary (cache-only)
   POST  /slips                      - create a slip with legs (locks odds)
   GET   /slips                      - list slips for the default user
   GET   /slips/{slip_id}            - one slip with legs + computed odds/returns
@@ -15,7 +16,7 @@ Routes:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date as date_type, datetime, time, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,7 @@ from sqlmodel import Session, select
 
 from oddsmith.config import get_settings
 from oddsmith.db import (
+    CachedFixture,
     CornerEvaluationSnapshot,
     DEFAULT_USER_ID,
     HistoricalMatch,
@@ -1149,3 +1151,182 @@ def update_slip(
     legs = _load_legs(session, slip_id)
     session.refresh(slip)
     return _to_slip_view(slip, legs)
+
+
+# --------------------------------------------------------------------------- #
+# Calendar
+# --------------------------------------------------------------------------- #
+
+
+class CalendarDayModelView(BaseModel):
+    """What the model could build for one day, if anything."""
+
+    candidate_count: int
+    target_met: bool
+    combined_odds: float
+    combined_model_prob: float
+    leg_count: int
+
+
+class CalendarDayView(BaseModel):
+    date: date_type
+    fixture_count: int
+    leagues: list[str]
+    slip_count: int
+    pending_count: int
+    won_count: int
+    lost_count: int
+    staked: float
+    profit_loss: float
+    model: CalendarDayModelView | None = None
+
+
+class CalendarView(BaseModel):
+    date_from: date_type
+    date_to: date_type
+    days: list[CalendarDayView]
+    model_trained: bool
+    fixture_count: int
+    profit_loss: float
+    staked: float
+    settled_slip_count: int
+
+
+# A month view plus its overflow weeks; also bounds the per-day model searches.
+MAX_CALENDAR_DAYS = 62
+
+
+def _day_bounds(day: date_type) -> tuple[datetime, datetime]:
+    return (
+        datetime.combine(day, time.min, tzinfo=UTC),
+        datetime.combine(day, time.max, tzinfo=UTC),
+    )
+
+
+def _slip_match_day(legs: list[SlipLeg], slip: Slip) -> date_type:
+    """The day a slip belongs to: its earliest kickoff, not when it was created.
+
+    A slip built the night before is a bet on the next day's card, and that is
+    the day it should appear on in the calendar.
+    """
+    if legs:
+        earliest = min(leg.kickoff_utc for leg in legs)
+        aware = earliest if earliest.tzinfo else earliest.replace(tzinfo=UTC)
+        return aware.astimezone(UTC).date()
+    created = slip.created_at
+    aware = created if created.tzinfo else created.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).date()
+
+
+@app.get("/calendar", response_model=CalendarView)
+def calendar(
+    date_from: date_type = Query(...),
+    date_to: date_type = Query(...),
+    include_model: bool = Query(default=True),
+    target_odds: float = Query(default=1.5, gt=1.0, le=20.0),
+    max_legs: int = Query(default=4, ge=1, le=8),
+    min_leg_prob: float = Query(default=0.55, ge=0.0, lt=1.0),
+    session: Session = Depends(get_session),
+) -> CalendarView:
+    """Summarise each day in a window: fixtures, slips settled, and model shape.
+
+    Deliberately cache-only. Unlike ``/fixtures``, this never calls a provider —
+    a month view would otherwise fan out into a fetch per uncovered day and
+    exhaust the odds-API quota every time someone paged the calendar. Days that
+    have not been fetched yet simply report zero fixtures.
+    """
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be after date_from")
+    span = (date_to - date_from).days + 1
+    if span > MAX_CALENDAR_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"window too wide: {span} days (max {MAX_CALENDAR_DAYS})",
+        )
+
+    window_start, _ = _day_bounds(date_from)
+    _, window_end = _day_bounds(date_to)
+
+    rows = session.exec(
+        select(CachedFixture).where(
+            CachedFixture.kickoff_utc >= window_start.replace(tzinfo=None),
+            CachedFixture.kickoff_utc <= window_end.replace(tzinfo=None),
+        )
+    )
+    fixtures_by_day: dict[date_type, list[Fixture]] = {}
+    for row in rows:
+        fixture = Fixture.model_validate(row.payload)
+        kickoff = fixture.kickoff_utc
+        aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=UTC)
+        fixtures_by_day.setdefault(aware.astimezone(UTC).date(), []).append(fixture)
+
+    slips = list(session.exec(select(Slip).where(Slip.user_id == DEFAULT_USER_ID)))
+    slip_legs = {slip.id: _load_legs(session, slip.id or 0) for slip in slips}
+    slips_by_day: dict[date_type, list[Slip]] = {}
+    for slip in slips:
+        day = _slip_match_day(slip_legs.get(slip.id, []), slip)
+        if date_from <= day <= date_to:
+            slips_by_day.setdefault(day, []).append(slip)
+
+    service = get_model_service(session)
+    model_trained = service.is_trained()
+
+    days: list[CalendarDayView] = []
+    cursor = date_from
+    while cursor <= date_to:
+        day_fixtures = fixtures_by_day.get(cursor, [])
+        day_slips = slips_by_day.get(cursor, [])
+
+        staked = sum(s.stake for s in day_slips)
+        pnl = 0.0
+        for slip in day_slips:
+            if slip.result == SlipResult.PENDING:
+                continue
+            pnl += profit_loss(slip.stake, _leg_inputs(slip_legs.get(slip.id, [])))
+
+        model_view: CalendarDayModelView | None = None
+        if include_model and model_trained and day_fixtures:
+            _enrich_with_model(day_fixtures, service)
+            candidates = _collect_candidates(day_fixtures)
+            acca = build_target_acca(
+                candidates,
+                target_odds=target_odds,
+                max_legs=max_legs,
+                min_leg_prob=min_leg_prob,
+            )
+            model_view = CalendarDayModelView(
+                candidate_count=acca.pool_size,
+                target_met=acca.target_met,
+                combined_odds=acca.combined_odds,
+                combined_model_prob=acca.combined_model_prob,
+                leg_count=len(acca.legs),
+            )
+
+        days.append(
+            CalendarDayView(
+                date=cursor,
+                fixture_count=len(day_fixtures),
+                leagues=sorted({f.league for f in day_fixtures if f.league}),
+                slip_count=len(day_slips),
+                pending_count=sum(
+                    1 for s in day_slips if s.result == SlipResult.PENDING
+                ),
+                won_count=sum(1 for s in day_slips if s.result == SlipResult.WON),
+                lost_count=sum(1 for s in day_slips if s.result == SlipResult.LOST),
+                staked=round(staked, 2),
+                profit_loss=round(pnl, 2),
+                model=model_view,
+            )
+        )
+        cursor += timedelta(days=1)
+
+    return CalendarView(
+        date_from=date_from,
+        date_to=date_to,
+        days=days,
+        model_trained=model_trained,
+        fixture_count=sum(d.fixture_count for d in days),
+        profit_loss=round(sum(d.profit_loss for d in days), 2),
+        staked=round(sum(d.staked for d in days), 2),
+        settled_slip_count=sum(d.won_count + d.lost_count for d in days),
+    )

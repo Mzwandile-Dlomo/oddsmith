@@ -1,5 +1,6 @@
 import type {
   AccaView,
+  CalendarView,
   BacktestView,
   CornerEvaluationReportView,
   DailyAccaView,
@@ -101,6 +102,8 @@ export interface DailyAccaParams {
   bankroll: number;
   horizonBets: number;
   markets: MarketType[];
+  /** ISO date (YYYY-MM-DD). Omit for "from now"; set to scope the slip to one day. */
+  date?: string;
 }
 
 export async function fetchDailyAcca({
@@ -109,6 +112,7 @@ export async function fetchDailyAcca({
   bankroll,
   horizonBets,
   markets,
+  date,
 }: DailyAccaParams): Promise<DailyAccaView> {
   const params = new URLSearchParams({
     target_odds: String(targetOdds),
@@ -116,8 +120,25 @@ export async function fetchDailyAcca({
     bankroll: String(bankroll),
     horizon_bets: String(horizonBets),
   });
+  if (date) {
+    params.set("date_from", `${date}T00:00:00Z`);
+    params.set("date_to", `${date}T23:59:59Z`);
+  }
   markets.forEach((market) => params.append("markets", market));
   return request<DailyAccaView>(`/acca/daily?${params.toString()}`);
+}
+
+export async function fetchCalendar(
+  dateFrom: string,
+  dateTo: string,
+  includeModel = true
+): Promise<CalendarView> {
+  const params = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+    include_model: String(includeModel),
+  });
+  return request<CalendarView>(`/calendar?${params.toString()}`);
 }
 
 export async function fetchHistoryLeagues(): Promise<string[]> {

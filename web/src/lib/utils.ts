@@ -156,3 +156,74 @@ export function groupFixturesByDay<T extends { kickoff_utc: string }>(
     return { label, isoDate, items };
   });
 }
+
+// --------------------------------------------------------------------------
+// Calendar
+//
+// Day keys are plain `YYYY-MM-DD` strings in the user's local timezone. Dates
+// are constructed at local noon so a DST shift can never roll a cell onto the
+// neighbouring day.
+// --------------------------------------------------------------------------
+
+export function dateFromISO(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0);
+}
+
+export function toLocalISODate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export function todayISO(): string {
+  return toLocalISODate(new Date());
+}
+
+export function addMonths(iso: string, delta: number): string {
+  const d = dateFromISO(iso);
+  return toLocalISODate(new Date(d.getFullYear(), d.getMonth() + delta, 1, 12));
+}
+
+export function monthLabel(iso: string): string {
+  return dateFromISO(iso).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function dayLabel(iso: string): string {
+  const today = todayISO();
+  if (iso === today) return "Today";
+  if (iso === toLocalISODate(addDays(dateFromISO(today), 1))) return "Tomorrow";
+  if (iso === toLocalISODate(addDays(dateFromISO(today), -1))) return "Yesterday";
+  return dateFromISO(iso).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/** The Monday-first 6x7 grid covering the month `iso` falls in. */
+export function monthGrid(iso: string): string[] {
+  const anchor = dateFromISO(iso);
+  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1, 12);
+  // getDay() is Sunday-0; shift so Monday starts the week.
+  const lead = (first.getDay() + 6) % 7;
+  const start = addDays(first, -lead);
+  return Array.from({ length: 42 }, (_, i) => toLocalISODate(addDays(start, i)));
+}
+
+export function isSameMonth(iso: string, monthIso: string): boolean {
+  return iso.slice(0, 7) === monthIso.slice(0, 7);
+}
+
+export function formatSignedCurrency(amount: number, currency = "USD"): string {
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}${currency} ${Math.abs(amount).toFixed(2)}`;
+}
+
+export function formatPercent(value: number, digits = 0): string {
+  return `${(value * 100).toFixed(digits)}%`;
+}
