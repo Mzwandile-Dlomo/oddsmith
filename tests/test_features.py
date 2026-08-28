@@ -4,11 +4,13 @@ from oddsmith.data.features import build_training_examples
 from oddsmith.db import MatchObservation
 
 
-def _match(day: int, home_goals: int, away_goals: int) -> MatchObservation:
+def _match(
+    day: int, home_goals: int, away_goals: int, *, league: str = "EPL"
+) -> MatchObservation:
     return MatchObservation(
         source_key=f"match:{day}",
         source="test",
-        league="EPL",
+        league=league,
         season=2025,
         kickoff_utc=datetime(2025, 8, 1, tzinfo=UTC) + timedelta(days=day),
         home_team="Home",
@@ -45,7 +47,7 @@ def test_features_use_only_matches_before_kickoff():
     assert example.features["away_goals_for_avg"] == 0.0
     assert example.features["home_shots_for_avg"] == 10.0
     assert example.features["home_rest_days"] == 7.0
-    assert example.result_label == 2
+    assert example.result_label == 0
     assert example.total_corners_label == 9
 
 
@@ -59,6 +61,21 @@ def test_market_probabilities_are_demargined():
         if features[key] is not None
     )
     assert abs(total - 1.0) < 0.00001
+
+
+def test_team_history_is_isolated_by_league():
+    examples = build_training_examples(
+        [
+            _match(0, 2, 0, league="EPL"),
+            _match(7, 1, 1, league="LaLiga"),
+            _match(14, 3, 0, league="LaLiga"),
+        ],
+        min_team_matches=1,
+    )
+
+    assert len(examples) == 1
+    assert examples[0].league == "LaLiga"
+    assert examples[0].features["home_goals_for_avg"] == 1.0
 
 
 def test_invalid_feature_window_is_rejected():

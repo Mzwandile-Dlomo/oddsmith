@@ -200,15 +200,61 @@ def _strategy_metrics(
 
 
 def _summary(scored: _Scored, *, bootstrap_samples: int, seed: int) -> EvaluationSummary:
+    return summarize_predictions(
+        model_probs=scored.model_probs,
+        model_actuals=scored.model_actuals,
+        market_probs=scored.market_probs,
+        market_actuals=scored.market_actuals,
+        bet_profits=scored.bet_profits,
+        bootstrap_samples=bootstrap_samples,
+        seed=seed,
+    )
+
+
+def summarize_predictions(
+    *,
+    model_probs: list[tuple[float, float, float]],
+    model_actuals: list[int],
+    market_probs: list[tuple[float, float, float]],
+    market_actuals: list[int],
+    bet_profits: list[float],
+    bootstrap_samples: int = 1000,
+    seed: int = 42,
+) -> EvaluationSummary:
+    """Score any 1X2 challenger using the same metrics and strategy contract."""
     return EvaluationSummary(
-        model=_probability_metrics(scored.model_probs, scored.model_actuals),
-        market=_probability_metrics(scored.market_probs, scored.market_actuals),
+        model=_probability_metrics(model_probs, model_actuals),
+        market=_probability_metrics(market_probs, market_actuals),
         strategy=_strategy_metrics(
-            scored.bet_profits,
+            bet_profits,
             bootstrap_samples=bootstrap_samples,
             seed=seed,
         ),
     )
+
+
+def select_bet_profit(
+    *,
+    model_probs: tuple[float, float, float],
+    market_probs: tuple[float, float, float],
+    odds: tuple[float, float, float],
+    actual: int,
+    min_edge: float,
+    max_edge: float,
+) -> float | None:
+    """Return one-unit profit for the highest-EV eligible pick, if any."""
+    candidates: list[tuple[float, int]] = []
+    for index, (probability, price, market_probability) in enumerate(
+        zip(model_probs, odds, market_probs, strict=True)
+    ):
+        edge = probability - market_probability
+        expected_profit = probability * price - 1.0
+        if min_edge <= edge <= max_edge and expected_profit > 0:
+            candidates.append((expected_profit, index))
+    if not candidates:
+        return None
+    _, selection = max(candidates)
+    return odds[selection] - 1.0 if selection == actual else -1.0
 
 
 def _score_fold(
@@ -253,17 +299,16 @@ def _score_fold(
         scored.market_probs.append(market_probs)
         scored.market_actuals.append(actual)
 
-        candidates: list[tuple[float, int]] = []
-        for index, (probability, price, market_probability) in enumerate(
-            zip(model_probs, odds, market_probs, strict=True)
-        ):
-            edge = probability - market_probability
-            expected_profit = probability * price - 1.0
-            if min_edge <= edge <= max_edge and expected_profit > 0:
-                candidates.append((expected_profit, index))
-        if candidates:
-            _, selection = max(candidates)
-            scored.bet_profits.append(odds[selection] - 1.0 if selection == actual else -1.0)
+        profit = select_bet_profit(
+            model_probs=model_probs,
+            market_probs=market_probs,
+            odds=odds,
+            actual=actual,
+            min_edge=min_edge,
+            max_edge=max_edge,
+        )
+        if profit is not None:
+            scored.bet_profits.append(profit)
     return scored
 
 

@@ -24,7 +24,7 @@ class TrainingExample:
     home_team: str
     away_team: str
     features: dict[str, float | None]
-    result_label: int  # 0=away, 1=draw, 2=home
+    result_label: int  # 0=home, 1=draw, 2=away
     over_2_5_label: int
     btts_label: int
     total_corners_label: int | None
@@ -134,11 +134,11 @@ def build_training_examples(
     if window < 1 or min_team_matches < 0:
         raise ValueError("window must be >= 1 and min_team_matches must be >= 0")
 
-    history: dict[str, list[_TeamPerformance]] = defaultdict(list)
+    history: dict[tuple[str, str], list[_TeamPerformance]] = defaultdict(list)
     examples: list[TrainingExample] = []
     for match in sorted(matches, key=lambda row: row.kickoff_utc):
-        home_history = history[match.home_team]
-        away_history = history[match.away_team]
+        home_history = history[(match.league, match.home_team)]
+        away_history = history[(match.league, match.away_team)]
         if len(home_history) >= min_team_matches and len(away_history) >= min_team_matches:
             features = {
                 **_team_features("home", home_history, match.kickoff_utc, window),
@@ -160,11 +160,11 @@ def build_training_examples(
                     away_team=match.away_team,
                     features=features,
                     result_label=(
-                        2
+                        0
                         if match.home_goals > match.away_goals
                         else 1
                         if match.home_goals == match.away_goals
-                        else 0
+                        else 2
                     ),
                     over_2_5_label=int(match.home_goals + match.away_goals > 2.5),
                     btts_label=int(match.home_goals > 0 and match.away_goals > 0),

@@ -74,12 +74,32 @@ Model probabilities should be calibrated separately after training. Kelly stake
 sizing must use the calibrated probability and remain capped; no calibration,
 no automated stake.
 
+## Current benchmark (2026-08-29)
+
+The five-league expanding-window benchmark uses eight unseen test seasons per
+league. The boosted challenger pools the leagues, fits on older seasons,
+calibrates on the immediately preceding season, and scores only the following
+season. Because closing probabilities are input features, its conclusions apply
+only to close-to-kickoff decisions.
+
+| Candidate | Unseen matches | Log loss | Brier | Strategy ROI | 95% ROI interval |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Closing market | 14,168 | 0.9695 | 0.5762 | — | — |
+| Calibrated boosted 1X2 | 14,168 | 0.9826 | 0.5843 | -2.35% | -5.64% to +1.76% |
+| Dixon-Coles Poisson | 14,285 | 1.0208 | 0.6106 | -1.65% | -5.58% to +2.36% |
+
+The boosted model is a meaningful improvement over Poisson, but the closing
+market still wins on accuracy, log loss, Brier score, and calibration. Neither
+model passes the promotion gates, and neither ROI interval establishes a
+positive edge. Oddsmith therefore remains a research baseline, not a proven
+profit engine.
+
 ## Immediate sequence
 
-1. Import 8–12 seasons for the five major European leagues.
-2. Produce a coverage report for every field and season.
-3. Train and walk-forward test the market baseline, Poisson model, and first
-   boosted-tree challenger.
-4. Add API-Football post-match statistics for current/future coverage.
-5. Add historical odds snapshots only after pricing their quota cost.
-6. Build the corners count model once corner coverage passes the chosen minimum.
+1. Keep the latest full season untouched while iterating on challenger features.
+2. Add opening and timestamped odds so 24-hour and close-to-kickoff models can
+   be evaluated separately.
+3. Add API-Football post-match statistics for current/future coverage.
+4. Evaluate a market-residual model without tuning against the final test fold.
+5. Build the corners count model once corner coverage passes the chosen minimum.
+6. Promote a model only after it clears every gate above on unseen matches.
