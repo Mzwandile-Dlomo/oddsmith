@@ -62,6 +62,10 @@ async def _run() -> int:
     now = datetime.now(UTC)
     end = now + timedelta(days=args.days)
     markets = [MarketType(value) for value in args.markets]
+    if args.provider == "the_odds_api" and MarketType.BTTS in markets:
+        raise SystemExit(
+            "BTTS is not a bulk The Odds API market; use collect_additional_odds.py"
+        )
     with Session(get_engine()) as session:
         before = _snapshot_count(session)
         fixtures = await get_cached_fixtures(

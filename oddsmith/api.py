@@ -895,7 +895,7 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
         ],
         next_priorities=[
             "Develop a market-residual 1X2 challenger without tuning on the final test fold.",
-            "Collect timestamped BTTS and corner lines/prices before claiming betting ROI.",
+            "Schedule the capped BTTS/corner collector and accumulate settled price history.",
             "Ingest 2026/27 fixtures, lineups, injuries, and timestamped prices continuously.",
             "Run 1X2 and corner models in shadow mode before promotion or automated staking.",
         ],

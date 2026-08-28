@@ -81,6 +81,92 @@ async def test_the_odds_api_parses_h2h_and_totals(odds_settings):
 
 
 @respx.mock
+async def test_the_odds_api_collects_budgeted_btts_and_corner_markets(odds_settings):
+    event = {
+        "id": "event-1",
+        "sport_key": "soccer_epl",
+        "sport_title": "EPL",
+        "commence_time": "2026-07-25T15:00:00Z",
+        "home_team": "Arsenal",
+        "away_team": "Chelsea",
+    }
+    respx.get(url__regex=r".*/sports/soccer_epl/events(\?.*)?$").mock(
+        return_value=httpx.Response(200, json=[event])
+    )
+    odds_route = respx.get(
+        url__regex=r".*/sports/soccer_epl/events/event-1/odds(\?.*)?$"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            headers={"x-requests-last": "4", "x-requests-remaining": "96"},
+            json={
+                **event,
+                "bookmakers": [
+                    {
+                        "key": "bk1",
+                        "title": "Book One",
+                        "markets": [
+                            {
+                                "key": "btts",
+                                "outcomes": [
+                                    {"name": "Yes", "price": 1.8},
+                                    {"name": "No", "price": 1.95},
+                                ],
+                            },
+                            {
+                                "key": "alternate_totals_corners",
+                                "outcomes": [
+                                    {"name": "Over", "price": 1.9, "point": 9.5},
+                                    {"name": "Under", "price": 1.9, "point": 9.5},
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+
+    async with httpx.AsyncClient(base_url=odds_settings.the_odds_api_base_url) as client:
+        provider = TheOddsApiProvider(
+            settings=odds_settings, client=client, sports=("soccer_epl",)
+        )
+        result = await provider.collect_additional_markets(
+            date_from=datetime(2026, 7, 25, tzinfo=UTC),
+            date_to=datetime(2026, 7, 26, tzinfo=UTC),
+            markets=[MarketType.BTTS, MarketType.CORNER_TOTALS],
+            max_events=5,
+            max_credits=20,
+        )
+
+    assert odds_route.called
+    requested_url = str(odds_route.calls.last.request.url)
+    assert "markets=btts%2Calternate_totals_corners" in requested_url
+    assert result.events_discovered == 1
+    assert result.event_requests == 1
+    assert result.estimated_max_credits == 4
+    assert result.credits_used == 4
+    assert result.credits_remaining == 96
+    assert {market.type for market in result.fixtures[0].markets} == {
+        MarketType.BTTS,
+        MarketType.CORNER_TOTALS,
+    }
+
+
+async def test_additional_market_collector_rejects_insufficient_budget(odds_settings):
+    provider = TheOddsApiProvider(settings=odds_settings, sports=("soccer_epl",))
+
+    with pytest.raises(ValueError, match="at least 4"):
+        await provider.collect_additional_markets(
+            date_from=datetime(2026, 7, 25, tzinfo=UTC),
+            date_to=datetime(2026, 7, 26, tzinfo=UTC),
+            markets=[MarketType.BTTS, MarketType.CORNER_TOTALS],
+            max_events=5,
+            max_credits=3,
+        )
+
+
+@respx.mock
 async def test_api_football_parses_fixtures_and_bets(odds_settings):
     fixtures_payload = {
         "response": [

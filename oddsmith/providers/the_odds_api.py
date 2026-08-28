@@ -13,11 +13,13 @@ Market keys we map:
   h2h     -> MATCH_WINNER  (outcomes: home team / away team / "Draw")
   totals  -> OVER_UNDER    (outcomes: "Over"/"Under" with a `point` line)
 
-BTTS is not offered by this provider's core markets; API-Football supplies it.
+BTTS and corner totals use a separately budgeted per-event collector because
+they are not available through the lower-cost bulk featured-market endpoint.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
@@ -40,11 +42,34 @@ DEFAULT_SOCCER_SPORTS = (
     "soccer_usa_mls",
 )
 
-_MARKET_KEY_TO_TYPE = {
+_FEATURED_MARKET_KEY_TO_TYPE = {
     "h2h": MarketType.MATCH_WINNER,
     "totals": MarketType.OVER_UNDER,
 }
-_TYPE_TO_MARKET_KEY = {v: k for k, v in _MARKET_KEY_TO_TYPE.items()}
+_ADDITIONAL_MARKET_KEY_TO_TYPE = {
+    "btts": MarketType.BTTS,
+    "alternate_totals_corners": MarketType.CORNER_TOTALS,
+}
+_MARKET_KEY_TO_TYPE = {
+    **_FEATURED_MARKET_KEY_TO_TYPE,
+    **_ADDITIONAL_MARKET_KEY_TO_TYPE,
+}
+_TYPE_TO_FEATURED_MARKET_KEY = {
+    value: key for key, value in _FEATURED_MARKET_KEY_TO_TYPE.items()
+}
+_TYPE_TO_ADDITIONAL_MARKET_KEY = {
+    value: key for key, value in _ADDITIONAL_MARKET_KEY_TO_TYPE.items()
+}
+
+
+@dataclass(frozen=True)
+class AdditionalMarketCollection:
+    fixtures: list[Fixture]
+    events_discovered: int
+    event_requests: int
+    estimated_max_credits: int
+    credits_used: int
+    credits_remaining: int | None
 
 
 class TheOddsApiProvider(OddsProvider):
@@ -77,8 +102,101 @@ class TheOddsApiProvider(OddsProvider):
     def _market_keys(self, markets: list[MarketType] | None) -> str:
         if not markets:
             return "h2h,totals"
-        keys = [_TYPE_TO_MARKET_KEY[m] for m in markets if m in _TYPE_TO_MARKET_KEY]
+        keys = [
+            _TYPE_TO_FEATURED_MARKET_KEY[m]
+            for m in markets
+            if m in _TYPE_TO_FEATURED_MARKET_KEY
+        ]
         return ",".join(keys) if keys else "h2h,totals"
+
+    async def collect_additional_markets(
+        self,
+        *,
+        date_from: datetime,
+        date_to: datetime,
+        markets: list[MarketType],
+        max_events: int,
+        max_credits: int,
+    ) -> AdditionalMarketCollection:
+        """Fetch explicitly budgeted per-event BTTS/corner markets."""
+        if max_events < 1 or max_credits < 1:
+            raise ValueError("max_events and max_credits must be >= 1")
+        unsupported = set(markets) - set(_TYPE_TO_ADDITIONAL_MARKET_KEY)
+        if not markets or unsupported:
+            raise ValueError("additional markets must contain only btts and corner_totals")
+
+        market_keys = [
+            _TYPE_TO_ADDITIONAL_MARKET_KEY[market] for market in dict.fromkeys(markets)
+        ]
+        region_count = len(
+            [region for region in self._settings.the_odds_api_regions.split(",") if region]
+        )
+        maximum_per_event = len(market_keys) * max(region_count, 1)
+        event_limit = min(max_events, max_credits // maximum_per_event)
+        if event_limit < 1:
+            raise ValueError(
+                f"max_credits must be at least {maximum_per_event} for one event"
+            )
+
+        key = self._require_key()
+        client = await self._get_client()
+        owns_client = self._client is None
+        discovered: list[tuple[str, dict]] = []
+        fixtures: list[Fixture] = []
+        credits_used = 0
+        credits_remaining: int | None = None
+        try:
+            for sport in self._sports:
+                response = await client.get(
+                    f"/sports/{sport}/events",
+                    params={
+                        "apiKey": key,
+                        "dateFormat": "iso",
+                        "commenceTimeFrom": _iso_z(date_from),
+                        "commenceTimeTo": _iso_z(date_to),
+                    },
+                )
+                if response.status_code == 404:
+                    continue
+                response.raise_for_status()
+                discovered.extend((sport, event) for event in response.json())
+
+            discovered.sort(key=lambda item: item[1]["commence_time"])
+            for sport, event in discovered[:event_limit]:
+                response = await client.get(
+                    f"/sports/{sport}/events/{event['id']}/odds",
+                    params={
+                        "apiKey": key,
+                        "regions": self._settings.the_odds_api_regions,
+                        "markets": ",".join(market_keys),
+                        "oddsFormat": "decimal",
+                        "dateFormat": "iso",
+                    },
+                )
+                if response.status_code == 404:
+                    continue
+                response.raise_for_status()
+                credits_used += int(response.headers.get("x-requests-last", "0"))
+                remaining = response.headers.get("x-requests-remaining")
+                if remaining is not None:
+                    credits_remaining = int(remaining)
+                fixture = self._parse_event(response.json())
+                if fixture.markets:
+                    fixtures.append(fixture)
+        except httpx.HTTPError as exc:  # pragma: no cover - network failure path
+            raise ProviderError(f"the-odds-api additional-market request failed: {exc}") from exc
+        finally:
+            if owns_client:
+                await client.aclose()
+
+        return AdditionalMarketCollection(
+            fixtures=fixtures,
+            events_discovered=len(discovered),
+            event_requests=min(len(discovered), event_limit),
+            estimated_max_credits=min(len(discovered), event_limit) * maximum_per_event,
+            credits_used=credits_used,
+            credits_remaining=credits_remaining,
+        )
 
     async def list_fixtures(
         self,
@@ -118,8 +236,8 @@ class TheOddsApiProvider(OddsProvider):
         return fixtures
 
     async def get_markets(self, fixture_id: str) -> list[Fixture]:
-        # v4 has a per-event endpoint but it needs the sport key; for the MVP we
-        # resolve markets via list_fixtures + client-side id filter in the API layer.
+        # Generic API lookups still resolve via list_fixtures. Additional BTTS
+        # and corner markets use collect_additional_markets with explicit limits.
         raise ProviderError(
             "the-odds-api: fetch markets via list_fixtures; per-event lookup not used in MVP"
         )

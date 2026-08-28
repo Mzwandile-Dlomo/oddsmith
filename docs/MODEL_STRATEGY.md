@@ -116,6 +116,23 @@ fixtures: 6,672 match-winner outcomes and 1,960 goals-total outcomes, observed
 between 2.3 and 74.0 hours before kickoff. It recovered no BTTS or corner prices,
 so those ROI gates remain blocked.
 
+The additional-market collector discovers events through the provider's free
+events endpoint, then fetches BTTS and total-corner prices one event at a time.
+It is plan-only unless `--write` is supplied and enforces both event and credit
+ceilings:
+
+```bash
+# No network or quota use; prints the configured worst-case plan.
+uv run --active python scripts/collect_additional_odds.py
+
+# Explicitly permit at most five events and 20 credits.
+uv run --active python scripts/collect_additional_odds.py \
+  --max-events 5 --max-credits 20 --write
+```
+
+The command records the provider-reported credits used and remaining. Schedule
+it only after confirming the account plan and preferred bookmaker regions.
+
 ## Immediate sequence
 
 1. Keep the latest full season untouched while iterating on challenger features.
