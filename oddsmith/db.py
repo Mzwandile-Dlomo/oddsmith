@@ -95,6 +95,23 @@ class OddsSnapshot(SQLModel, table=True):
     price: float
 
 
+class OddsFixtureResult(SQLModel, table=True):
+    """Final match facts linked to a provider fixture's immutable price history."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    fixture_id: str = Field(index=True, unique=True)
+    source: str = Field(index=True)
+    source_key: str = Field(index=True)
+    kickoff_utc: datetime = Field(index=True)
+    home_team: str
+    away_team: str
+    home_goals: int
+    away_goals: int
+    home_corners: int | None = None
+    away_corners: int | None = None
+    settled_at: datetime = Field(default_factory=_now, index=True)
+
+
 class HistoricalMatch(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     league: str = Field(index=True)

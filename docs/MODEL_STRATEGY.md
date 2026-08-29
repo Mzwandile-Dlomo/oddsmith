@@ -74,6 +74,12 @@ Model probabilities should be calibrated separately after training. Kelly stake
 sizing must use the calibrated probability and remain capped; no calibration,
 no automated stake.
 
+The daily-ticket endpoint enforces this gate in the product. It may generate a
+paper ticket for tracking, but returns a zero recommended stake until the latest
+published model beats market log loss, Brier score and calibration, and the
+strategy's 95% ROI lower bound is above zero. The UI labels this state explicitly
+instead of presenting research probabilities as live betting advice.
+
 ## Current benchmark (2026-08-29)
 
 The five-league expanding-window benchmark uses eight unseen test seasons per
@@ -138,6 +144,13 @@ the allowed 20 credits, leaving 434, and stored 254 outcomes: 114 BTTS prices
 across five fixtures and 140 total-corner prices across four fixtures. These
 were captured 0.7–13.7 hours before kickoff. This proves collection works; it is
 far too small and too close to kickoff to validate ROI or a 24-hour strategy.
+
+Collection now defaults to the 18–36 hour horizon. `OddsFixtureResult` is a
+separate settlement ledger: it matches completed priced fixtures to enriched
+observations by normalized teams and kickoff time, then derives 1X2, BTTS,
+goals-total, and corner-total outcomes. The first settlement pass found 23
+completed priced fixtures but no matching current result rows, confirming that
+continuous result ingestion—not outcome logic—is the next data blocker.
 
 ## Immediate sequence
 

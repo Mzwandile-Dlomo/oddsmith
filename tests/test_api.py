@@ -362,6 +362,8 @@ def test_daily_acca_returns_a_staking_plan(client):
     assert body["fixtures_scanned"] == 1
     assert body["candidates_scanned"] == 0
     assert body["model_trained"] is False
+    assert body["execution_mode"] == "paper"
+    assert staking["recommended_stake"] == 0.0
     assert set(body["markets_used"]) == {"match_winner", "over_under", "btts"}
 
 
@@ -394,6 +396,38 @@ def test_daily_acca_trains_from_history(client):
     assert body["pool_size"] >= 0
     assert 0.0 <= body["combined_model_prob"] <= 1.0
     assert body["staking"]["recommended_fraction"] >= 0.0
+
+
+def test_daily_acca_unlocks_live_mode_only_after_all_promotion_gates_pass(client):
+    metrics = {
+        "matches": 1000,
+        "accuracy": 0.55,
+        "log_loss": 0.9,
+        "brier": 0.54,
+        "calibration_error": 0.01,
+    }
+    market = {**metrics, "log_loss": 0.95, "brier": 0.57, "calibration_error": 0.02}
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            ModelEvaluationSnapshot(
+                model_name="Promotable challenger",
+                generated_at=datetime(2026, 8, 29, tzinfo=UTC),
+                dataset_matches=1000,
+                payload={
+                    "overall": {
+                        "model": metrics,
+                        "market": market,
+                        "strategy": {"roi_ci_low": 0.01},
+                    }
+                },
+            )
+        )
+        session.commit()
+
+    body = client.get("/acca/daily").json()
+
+    assert body["execution_mode"] == "live"
+    assert body["validation_model"] == "Promotable challenger"
 
 
 def test_daily_acca_rejects_a_backwards_window(client):

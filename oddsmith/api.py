@@ -16,6 +16,7 @@ Routes:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, date as date_type, datetime, time, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -33,6 +34,7 @@ from oddsmith.db import (
     MatchObservation,
     ModelEvaluationSnapshot,
     OddsSnapshot,
+    OddsFixtureResult,
     Slip,
     SlipLeg,
     get_session,
@@ -300,6 +302,7 @@ class MarketReadinessView(BaseModel):
     roi_validated: bool
     training_rows: int
     odds_rows: int
+    settled_rows: int
     note: str
 
 
@@ -439,6 +442,9 @@ class DailyAccaView(BaseModel):
     fixtures_scanned: int
     candidates_scanned: int
     markets_used: list[MarketType]
+    execution_mode: str
+    validation_model: str | None
+    validation_status: str
     staking: StakingView
     note: str
 
@@ -613,6 +619,20 @@ async def daily_acca(
         bankroll=bankroll,
         horizon_bets=horizon_bets,
     )
+    promoted, validation_model, validation_status = _model_validation_gate(session)
+    if not promoted:
+        plan = replace(
+            plan,
+            recommended_fraction=0.0,
+            recommended_stake=0.0,
+            growth_per_bet=0.0,
+            bets_to_double=None,
+            projected_bankroll=round(bankroll, 2),
+            note=(
+                "Paper mode: automated staking is locked until an unseen-season model "
+                "beats the bookmaker baseline and its 95% ROI lower bound is positive."
+            ),
+        )
 
     fixtures_by_id = {f.id: f for f in fixtures}
     view = _acca_to_view(acca, fixtures_by_id)
@@ -628,6 +648,9 @@ async def daily_acca(
         fixtures_scanned=len(fixtures),
         candidates_scanned=len(candidates),
         markets_used=sorted(requested_markets, key=lambda m: m.value),
+        execution_mode="live" if promoted else "paper",
+        validation_model=validation_model,
+        validation_status=validation_status,
         staking=StakingView(
             bankroll=plan.bankroll,
             full_kelly_fraction=plan.full_kelly_fraction,
@@ -643,6 +666,37 @@ async def daily_acca(
             note=plan.note,
         ),
         note=_daily_note(acca, model_trained=service.is_trained(), fixtures=len(fixtures)),
+    )
+
+
+def _model_validation_gate(session: Session) -> tuple[bool, str | None, str]:
+    snapshot = session.exec(
+        select(ModelEvaluationSnapshot).order_by(
+            ModelEvaluationSnapshot.generated_at.desc()
+        )
+    ).first()
+    if snapshot is None:
+        return False, None, "No unseen-season validation has been published."
+    try:
+        overall = snapshot.payload["overall"]
+        model = overall["model"]
+        market = overall["market"]
+        strategy = overall["strategy"]
+        promoted = (
+            model["log_loss"] < market["log_loss"]
+            and model["brier"] < market["brier"]
+            and model["calibration_error"] <= market["calibration_error"]
+            and strategy["roi_ci_low"] is not None
+            and strategy["roi_ci_low"] > 0
+        )
+    except (KeyError, TypeError):
+        return False, snapshot.model_name, "Published validation payload is incomplete."
+    if promoted:
+        return True, snapshot.model_name, "Promotion gates passed on unseen seasons."
+    return (
+        False,
+        snapshot.model_name,
+        "Latest validation remains below the bookmaker baseline or lacks a positive ROI bound.",
     )
 
 
@@ -724,6 +778,19 @@ def _snapshot_fixture_count(session: Session, market_type: MarketType) -> int:
     )
 
 
+def _settled_snapshot_fixture_count(session: Session, market_type: MarketType) -> int:
+    return int(
+        session.exec(
+            select(func.count(func.distinct(OddsSnapshot.fixture_id)))
+            .join(
+                OddsFixtureResult,
+                OddsFixtureResult.fixture_id == OddsSnapshot.fixture_id,
+            )
+            .where(OddsSnapshot.market_type == market_type.value)
+        ).one()
+    )
+
+
 @app.get("/model/readiness", response_model=ModelReadinessView)
 def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessView:
     """Expose evidence and gaps behind the model, not a cosmetic "AI ready" flag."""
@@ -770,6 +837,10 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
     )
     btts_price_fixtures = _snapshot_fixture_count(session, MarketType.BTTS)
     corner_price_fixtures = _snapshot_fixture_count(
+        session, MarketType.CORNER_TOTALS
+    )
+    settled_btts = _settled_snapshot_fixture_count(session, MarketType.BTTS)
+    settled_corners = _settled_snapshot_fixture_count(
         session, MarketType.CORNER_TOTALS
     )
     corner_evaluation = session.exec(
@@ -842,6 +913,7 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 roi_validated=False,
                 training_rows=total,
                 odds_rows=odds_1x2,
+                settled_rows=odds_1x2,
                 note=(
                     "Poisson is live; the calibrated challenger improved it but remains below "
                     "the closing-market baseline."
@@ -855,6 +927,7 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 roi_validated=False,
                 training_rows=total,
                 odds_rows=odds_goals,
+                settled_rows=odds_goals,
                 note="Outcome coverage is complete, but historical price coverage is partial.",
             ),
             MarketReadinessView(
@@ -865,9 +938,10 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 roi_validated=False,
                 training_rows=total,
                 odds_rows=btts_price_fixtures,
+                settled_rows=settled_btts,
                 note=(
-                    "BTTS snapshots are accumulating, but ROI remains blocked until enough "
-                    "fixtures are captured and settled."
+                    f"BTTS snapshots are accumulating; {settled_btts} priced fixtures are "
+                    "settled, and ROI remains blocked until the sample is meaningful."
                     if btts_price_fixtures
                     else "Probabilities can be modelled; historical BTTS prices are missing "
                     "for ROI."
@@ -881,9 +955,10 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 roi_validated=False,
                 training_rows=corners,
                 odds_rows=corner_price_fixtures,
+                settled_rows=settled_corners,
                 note=(
-                    "Count accuracy is walk-forward tested; price snapshots are accumulating, "
-                    "but ROI needs enough settled fixtures."
+                    f"Count accuracy is walk-forward tested; {settled_corners} priced fixtures "
+                    "are settled, and ROI needs a meaningful sample."
                     if corner_price_fixtures
                     else "Count accuracy is walk-forward tested; historical corner prices are "
                     "still missing, so ROI cannot be estimated."

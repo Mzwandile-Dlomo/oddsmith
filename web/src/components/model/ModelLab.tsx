@@ -127,13 +127,21 @@ function MarketCard({ market }: { market: MarketReadinessView }) {
         <h4 className="text-sm font-semibold text-[#111827]">{market.label}</h4>
         <StageBadge stage={market.stage} />
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid grid-cols-3 gap-2">
         <div className="rounded-lg bg-[#F9FAFB] p-2.5">
           <p className="text-[9px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
             Training rows
           </p>
           <p className="mt-1 text-sm font-bold tabular-nums text-[#111827]">
             {number(market.training_rows)}
+          </p>
+        </div>
+        <div className="rounded-lg bg-[#F9FAFB] p-2.5">
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+            Settled
+          </p>
+          <p className="mt-1 text-sm font-bold tabular-nums text-[#111827]">
+            {number(market.settled_rows)}
           </p>
         </div>
         <div className="rounded-lg bg-[#F9FAFB] p-2.5">

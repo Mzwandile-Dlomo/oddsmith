@@ -102,6 +102,7 @@ export interface MarketReadinessView {
   roi_validated: boolean;
   training_rows: number;
   odds_rows: number;
+  settled_rows: number;
   note: string;
 }
 
@@ -241,6 +242,9 @@ export interface DailyAccaView {
   fixtures_scanned: number;
   candidates_scanned: number;
   markets_used: MarketType[];
+  execution_mode: "paper" | "live";
+  validation_model: string | null;
+  validation_status: string;
   staking: StakingView;
   note: string;
 }

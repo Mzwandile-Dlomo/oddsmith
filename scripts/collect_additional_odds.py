@@ -21,7 +21,8 @@ from oddsmith.providers.the_odds_api import TheOddsApiProvider
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--days", type=int, default=3, choices=range(1, 8))
+    parser.add_argument("--min-hours-to-kickoff", type=float, default=18.0)
+    parser.add_argument("--max-hours-to-kickoff", type=float, default=36.0)
     parser.add_argument("--max-events", type=int, default=5, choices=range(1, 41))
     parser.add_argument("--max-credits", type=int, default=20)
     parser.add_argument(
@@ -40,6 +41,10 @@ def _parser() -> argparse.ArgumentParser:
 
 async def _run() -> int:
     args = _parser().parse_args()
+    if not 0 <= args.min_hours_to_kickoff < args.max_hours_to_kickoff <= 168:
+        raise SystemExit(
+            "kickoff horizon must satisfy 0 <= min < max <= 168 hours"
+        )
     settings = get_settings()
     markets = list(dict.fromkeys(MarketType(value) for value in args.markets))
     region_count = max(
@@ -52,15 +57,17 @@ async def _run() -> int:
         print(
             f"Plan only: up to {args.max_events} events, {len(markets)} markets, "
             f"{region_count} regions; configured ceiling {args.max_credits} credits "
-            f"(at most {capped_estimate} usable under this cap). Add --write to collect."
+            f"(at most {capped_estimate} usable under this cap); horizon "
+            f"{args.min_hours_to_kickoff:g}-{args.max_hours_to_kickoff:g}h. "
+            "Add --write to collect."
         )
         return 0
 
     init_db()
     now = datetime.now(UTC)
     result = await TheOddsApiProvider(settings=settings).collect_additional_markets(
-        date_from=now,
-        date_to=now + timedelta(days=args.days),
+        date_from=now + timedelta(hours=args.min_hours_to_kickoff),
+        date_to=now + timedelta(hours=args.max_hours_to_kickoff),
         markets=markets,
         max_events=args.max_events,
         max_credits=args.max_credits,

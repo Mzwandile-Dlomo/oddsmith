@@ -12,6 +12,7 @@ import {
 import { fetchDailyAcca, createSlip } from "@/lib/api";
 import type { DailyAccaView, MarketType } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
+import { formatKickoffShort } from "@/lib/utils";
 
 const TARGET_OPTIONS = [1.3, 1.5, 2.0, 3.0] as const;
 const BANKROLL_OPTIONS = [100, 500, 1000] as const;
@@ -87,6 +88,30 @@ function Stat({
 function StakingPanel({ data }: { data: DailyAccaView }) {
   const s = data.staking;
   const hasEdge = s.recommended_stake > 0;
+
+  if (data.execution_mode === "paper") {
+    return (
+      <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-4">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#D97706]" />
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-[#92400E]">Paper mode · stake 0</p>
+              {data.validation_model && (
+                <span className="rounded-full border border-[#FDE68A] bg-white px-2 py-0.5 text-[10px] font-medium text-[#92400E]">
+                  {data.validation_model}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-[#78350F]">
+              {data.validation_status} The slip can be saved and tracked, but Oddsmith will
+              not recommend real money while the promotion gates fail.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
@@ -211,7 +236,7 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
             {data.legs.length}-Leg Daily Slip
           </p>
           <p className="text-[10px] font-medium uppercase tracking-widest text-[#9CA3AF]">
-            Target {odds(data.target_odds)}
+            {data.execution_mode === "paper" ? "Paper ticket" : "Live eligible"} · Target {odds(data.target_odds)}
           </p>
         </div>
         <div className="divide-y divide-[#F3F4F6]">
@@ -229,6 +254,11 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
                     {selectionLabel(leg.market_type, leg.selection)}
                   </span>
                 </div>
+                <p className="mt-1 text-[11px] text-[#9CA3AF]">
+                  {[leg.league, leg.kickoff_utc ? formatKickoffShort(leg.kickoff_utc) : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-0.5">
                 <span className="text-[15px] font-bold tabular-nums text-[#111827]">
@@ -236,6 +266,9 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
                 </span>
                 <span className="text-[11px] tabular-nums text-[#9CA3AF]">
                   Model: {pct(leg.model_prob)}
+                </span>
+                <span className="text-[11px] font-medium tabular-nums text-[#059669]">
+                  Edge {signedPct(leg.edge)} · EV {signedPct(leg.expected_value)}
                 </span>
               </div>
             </div>
@@ -273,7 +306,9 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
                 Saving…
               </>
             ) : (
-              `Save at stake ${money(data.staking.recommended_stake)}`
+              data.execution_mode === "paper"
+                ? "Save paper ticket"
+                : `Save at stake ${money(data.staking.recommended_stake)}`
             )}
           </button>
           {saveError && (
@@ -354,7 +389,7 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
     setSavedOk(false);
     setSaveError(null);
     saveMutation.mutate({
-      name: `Daily ${data.combined_odds.toFixed(2)} (${data.legs.length}x)${date ? ` · ${date}` : ""}`,
+      name: `${data.execution_mode === "paper" ? "Paper" : "Daily"} ${data.combined_odds.toFixed(2)} (${data.legs.length}x)${date ? ` · ${date}` : ""}`,
       // Stake what the plan says, not the whole bankroll.
       stake: data.staking.recommended_stake,
       currency: "USD",
@@ -434,14 +469,14 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
               })}
               <span
                 className="flex h-9 cursor-not-allowed items-center rounded-lg border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-3 text-xs font-medium text-[#9CA3AF]"
-                title="Corner outcomes are loaded; the count model and historical prices are next"
+                title="Corner count model exists; price history is still too small for ticket use"
               >
-                Corners · model pending
+                Corners · collecting prices
               </span>
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-[#9CA3AF]">
-              Corner outcomes are loaded, but the market stays disabled until its count model
-              and price-based backtest pass validation.
+              The corner count model is walk-forward tested, but only a few priced fixtures
+              exist. It stays disabled until the price-based sample can validate ROI.
             </p>
           </div>
 
