@@ -2,8 +2,13 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from oddsmith.data.settlement import settle_from_match_observations, snapshot_result
-from oddsmith.db import MatchObservation, OddsFixtureResult, OddsSnapshot
+from oddsmith.data.settlement import (
+    settle_from_match_observations,
+    settle_pending_slips,
+    snapshot_result,
+)
+from oddsmith.db import MatchObservation, OddsFixtureResult, OddsSnapshot, Slip, SlipLeg
+from oddsmith.slips import LegResult, SlipResult
 
 
 def _session() -> Session:
@@ -101,3 +106,50 @@ def test_settlement_leaves_unmatched_fixture_unsettled():
 
     assert run.matched == 0
     assert run.unmatched == 1
+
+
+def test_settlement_automatically_resolves_saved_paper_ticket():
+    kickoff = datetime(2026, 8, 1, 15, tzinfo=UTC)
+    with _session() as session:
+        slip = Slip(name="Daily 1.5", stake=0, currency="ZAR")
+        session.add(slip)
+        session.commit()
+        session.refresh(slip)
+        session.add(
+            SlipLeg(
+                slip_id=slip.id or 0,
+                fixture_id="provider:event-1",
+                home_team="Home",
+                away_team="Away",
+                kickoff_utc=kickoff,
+                league="League",
+                provider="provider",
+                market_type="over_under",
+                selection="Over",
+                point=2.5,
+                price=1.75,
+            )
+        )
+        session.add(
+            OddsFixtureResult(
+                fixture_id="provider:event-1",
+                source="test",
+                source_key="result:paper-1",
+                kickoff_utc=kickoff,
+                home_team="Home",
+                away_team="Away",
+                home_goals=2,
+                away_goals=1,
+            )
+        )
+        session.commit()
+
+        run = settle_pending_slips(session, settled_at=kickoff + timedelta(hours=2))
+        saved_leg = session.exec(select(SlipLeg)).one()
+        saved_slip = session.exec(select(Slip)).one()
+
+    assert run.legs_settled == 1
+    assert run.slips_settled == 1
+    assert saved_leg.result is LegResult.WON
+    assert saved_slip.result is SlipResult.WON
+    assert saved_slip.settled_at == (kickoff + timedelta(hours=2)).replace(tzinfo=None)

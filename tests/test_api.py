@@ -128,6 +128,7 @@ def test_model_readiness_reports_coverage(client):
 
     body = client.get("/model/readiness").json()
     coverage = {item["key"]: item for item in body["coverage"]}
+    markets = {item["key"]: item for item in body["markets"]}
 
     assert body["model_trained"] is True
     assert body["dataset_matches"] == 1
@@ -136,6 +137,7 @@ def test_model_readiness_reports_coverage(client):
     assert coverage["odds_1x2"]["records"] == 1
     assert coverage["odds_goals"]["records"] == 0
     assert coverage["odds_btts"]["records"] == 0
+    assert markets["match_winner"]["settled_rows"] == 0
 
 
 def test_latest_model_evaluation_requires_a_published_snapshot(client):

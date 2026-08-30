@@ -839,6 +839,8 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
     corner_price_fixtures = _snapshot_fixture_count(
         session, MarketType.CORNER_TOTALS
     )
+    settled_1x2 = _settled_snapshot_fixture_count(session, MarketType.MATCH_WINNER)
+    settled_goals = _settled_snapshot_fixture_count(session, MarketType.OVER_UNDER)
     settled_btts = _settled_snapshot_fixture_count(session, MarketType.BTTS)
     settled_corners = _settled_snapshot_fixture_count(
         session, MarketType.CORNER_TOTALS
@@ -913,7 +915,7 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 roi_validated=False,
                 training_rows=total,
                 odds_rows=odds_1x2,
-                settled_rows=odds_1x2,
+                settled_rows=settled_1x2,
                 note=(
                     "Poisson is live; the calibrated challenger improved it but remains below "
                     "the closing-market baseline."
@@ -927,7 +929,7 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
                 roi_validated=False,
                 training_rows=total,
                 odds_rows=odds_goals,
-                settled_rows=odds_goals,
+                settled_rows=settled_goals,
                 note="Outcome coverage is complete, but historical price coverage is partial.",
             ),
             MarketReadinessView(

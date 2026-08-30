@@ -244,6 +244,69 @@ async def test_api_football_parses_fixtures_and_bets(odds_settings):
     assert all(o.point == 2.5 for o in ou.outcomes)
 
 
+@respx.mock
+async def test_api_football_collects_completed_result_and_statistics(odds_settings):
+    fixture = {
+        "fixture": {
+            "id": 555,
+            "date": "2026-08-28T15:00:00+00:00",
+            "status": {"short": "FT"},
+        },
+        "league": {"name": "Premier League", "season": 2026},
+        "teams": {
+            "home": {"id": 1, "name": "Arsenal"},
+            "away": {"id": 2, "name": "Chelsea"},
+        },
+        "goals": {"home": 2, "away": 1},
+    }
+    respx.get(url__regex=r".*/fixtures(\?.*)?$").mock(
+        return_value=httpx.Response(
+            200,
+            headers={"x-ratelimit-requests-remaining": "98"},
+            json={"response": [fixture]},
+        )
+    )
+    respx.get(url__regex=r".*/fixtures/statistics(\?.*)?$").mock(
+        return_value=httpx.Response(
+            200,
+            headers={"x-ratelimit-requests-remaining": "97"},
+            json={
+                "response": [
+                    {
+                        "team": {"id": 1},
+                        "statistics": [
+                            {"type": "Total Shots", "value": 12},
+                            {"type": "Shots on Goal", "value": 6},
+                            {"type": "Corner Kicks", "value": 7},
+                        ],
+                    },
+                    {
+                        "team": {"id": 2},
+                        "statistics": [
+                            {"type": "Total Shots", "value": 8},
+                            {"type": "Shots on Goal", "value": 3},
+                            {"type": "Corner Kicks", "value": 4},
+                        ],
+                    },
+                ]
+            },
+        )
+    )
+
+    async with httpx.AsyncClient(base_url=odds_settings.api_football_base_url) as client:
+        provider = ApiFootballProvider(settings=odds_settings, client=client)
+        results, quota = await provider.completed_results(datetime(2026, 8, 28).date())
+        enriched, stats_quota = await provider.add_result_statistics(results[0])
+
+    assert len(results) == 1
+    assert results[0].home_goals == 2
+    assert quota.requests_remaining == 98
+    assert enriched.home_corners == 7
+    assert enriched.away_corners == 4
+    assert enriched.home_shots_on_target == 6
+    assert stats_quota.requests_remaining == 97
+
+
 async def test_provider_missing_key_raises():
     from oddsmith.providers.base import ProviderError
 

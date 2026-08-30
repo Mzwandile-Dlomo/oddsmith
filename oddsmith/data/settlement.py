@@ -8,8 +8,15 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session, select
 
-from oddsmith.db import MatchObservation, OddsFixtureResult, OddsSnapshot
+from oddsmith.db import (
+    MatchObservation,
+    OddsFixtureResult,
+    OddsSnapshot,
+    Slip,
+    SlipLeg,
+)
 from oddsmith.models import MarketType
+from oddsmith.slips import LegInput, LegResult, SlipResult, settle
 from oddsmith.textnorm import fold_accents
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
@@ -24,7 +31,13 @@ class SettlementRun:
     unmatched: int
 
 
-def _team_key(name: str) -> str:
+@dataclass(frozen=True)
+class SlipSettlementRun:
+    legs_settled: int
+    slips_settled: int
+
+
+def team_key(name: str) -> str:
     tokens = _NON_ALNUM.sub(" ", fold_accents(name).lower()).split()
     return " ".join(token for token in tokens if token not in _TEAM_NOISE)
 
@@ -74,7 +87,7 @@ def settle_from_match_observations(
     )
     by_teams: dict[tuple[str, str], list[tuple]] = {}
     for observation in observations:
-        key = (_team_key(observation[3]), _team_key(observation[4]))
+        key = (team_key(observation[3]), team_key(observation[4]))
         by_teams.setdefault(key, []).append(observation)
 
     matched = already = 0
@@ -83,7 +96,7 @@ def settle_from_match_observations(
         if fixture_id in existing:
             already += 1
             continue
-        candidates = by_teams.get((_team_key(home_team), _team_key(away_team)), [])
+        candidates = by_teams.get((team_key(home_team), team_key(away_team)), [])
         closest = min(
             candidates,
             key=lambda row: abs(_naive_utc(row[2]) - _naive_utc(kickoff)),
@@ -118,7 +131,9 @@ def settle_from_match_observations(
     )
 
 
-def snapshot_result(snapshot: OddsSnapshot, result: OddsFixtureResult) -> str | None:
+def snapshot_result(
+    snapshot: OddsSnapshot | SlipLeg, result: OddsFixtureResult
+) -> str | None:
     """Return won/lost/void for supported selections, or None if facts are missing."""
     if snapshot.market_type == MarketType.MATCH_WINNER.value:
         actual = (
@@ -149,3 +164,49 @@ def snapshot_result(snapshot: OddsSnapshot, result: OddsFixtureResult) -> str | 
         actual = "Over" if total > snapshot.point else "Under"
         return "won" if snapshot.selection == actual else "lost"
     return None
+
+
+def settle_pending_slips(
+    session: Session, *, settled_at: datetime | None = None
+) -> SlipSettlementRun:
+    """Settle saved paper-ticket legs from linked fixture results."""
+    results = {
+        result.fixture_id: result
+        for result in session.exec(select(OddsFixtureResult)).all()
+    }
+    pending_legs = list(
+        session.exec(select(SlipLeg).where(SlipLeg.result == LegResult.PENDING))
+    )
+    legs_settled = 0
+    affected_slips: set[int] = set()
+    for leg in pending_legs:
+        fixture_result = results.get(leg.fixture_id)
+        if fixture_result is None:
+            continue
+        outcome = snapshot_result(leg, fixture_result)
+        if outcome is None:
+            continue
+        leg.result = LegResult(outcome)
+        session.add(leg)
+        affected_slips.add(leg.slip_id)
+        legs_settled += 1
+
+    slips_settled = 0
+    timestamp = settled_at or datetime.now(UTC)
+    for slip_id in affected_slips:
+        slip = session.get(Slip, slip_id)
+        if slip is None:
+            continue
+        legs = list(session.exec(select(SlipLeg).where(SlipLeg.slip_id == slip_id)))
+        slip.result = settle(
+            [LegInput(price=leg.price, result=leg.result) for leg in legs]
+        )
+        if slip.result is not SlipResult.PENDING:
+            slip.settled_at = timestamp
+            slips_settled += 1
+        session.add(slip)
+    session.commit()
+    return SlipSettlementRun(
+        legs_settled=legs_settled,
+        slips_settled=slips_settled,
+    )

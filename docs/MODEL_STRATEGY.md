@@ -152,12 +152,36 @@ goals-total, and corner-total outcomes. The first settlement pass found 23
 completed priced fixtures but no matching current result rows, confirming that
 continuous result ingestion—not outcome logic—is the next data blocker.
 
+`scripts/ingest_current_results.py` closes that loop without downloading every
+competition. It first finds priced fixtures that have kicked off but are not in
+the settlement ledger. For only the affected dates it fetches final scores,
+matches by normalized teams and kickoff time, requests post-match statistics
+only for matched fixtures, inserts idempotent `MatchObservation` rows, and runs
+settlement. The command is plan-only by default and has a hard request ceiling:
+
+```bash
+# Inspect unresolved coverage without calling API-Football or writing data.
+uv run --active python scripts/ingest_current_results.py
+
+# Explicitly permit at most 15 result/statistics requests.
+uv run --active python scripts/ingest_current_results.py \
+  --lookback-days 3 --max-requests 15 --write
+```
+
+This importer is intended for a daily post-match job. It reports the quota
+header returned by API-Football, and stores the upstream fixture id in
+`raw_payload` so repeat runs do not duplicate match observations. After linking
+results, it also settles matching legs on saved paper tickets; the History and
+Calendar views can therefore report realised paper P&L without manual updates.
+
 ## Immediate sequence
 
 1. Keep the latest full season untouched while iterating on challenger features.
 2. Add opening and timestamped odds so 24-hour and close-to-kickoff models can
    be evaluated separately.
-3. Add API-Football post-match statistics for current/future coverage.
+3. Run the capped result importer daily and report paper ROI, hit rate, CLV, and
+   calibration only after the settlement sample is meaningful.
 4. Evaluate a market-residual model without tuning against the final test fold.
-5. Build the corners count model once corner coverage passes the chosen minimum.
+5. Retrain the corners count model after priced corner coverage passes the
+   chosen minimum.
 6. Promote a model only after it clears every gate above on unseen matches.
