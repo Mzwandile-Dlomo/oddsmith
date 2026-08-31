@@ -124,6 +124,22 @@ export interface ModelReadinessView {
   next_priorities: string[];
 }
 
+export interface PaperPerformanceView {
+  generated_tickets: number;
+  pending_tickets: number;
+  settled_tickets: number;
+  won_tickets: number;
+  lost_tickets: number;
+  win_rate: number | null;
+  average_odds: number | null;
+  unit_staked: number;
+  unit_returned: number;
+  unit_profit: number;
+  unit_roi: number | null;
+  tracking_target: number;
+  note: string;
+}
+
 export interface ProbabilityMetricsView {
   matches: number;
   accuracy: number;

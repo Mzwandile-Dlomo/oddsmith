@@ -140,6 +140,48 @@ def test_model_readiness_reports_coverage(client):
     assert markets["match_winner"]["settled_rows"] == 0
 
 
+def test_paper_performance_uses_only_generated_paper_tickets_and_unit_stakes(client):
+    paper_win = _slip_on("2026-07-22T15:00:00Z", stake=0, price=2.0)
+    paper_win["name"] = "Paper 2.00 (1x)"
+    won = client.post("/slips", json=paper_win).json()
+    client.patch(
+        f"/slips/{won['id']}",
+        json={"legs": [{"leg_id": won["legs"][0]["id"], "result": "won"}]},
+    )
+
+    paper_loss = _slip_on("2026-07-23T15:00:00Z", stake=0, price=1.5)
+    paper_loss["name"] = "Paper 1.50 (1x)"
+    lost = client.post("/slips", json=paper_loss).json()
+    client.patch(
+        f"/slips/{lost['id']}",
+        json={"legs": [{"leg_id": lost["legs"][0]["id"], "result": "lost"}]},
+    )
+
+    manual = _slip_on("2026-07-24T15:00:00Z", stake=10, price=10.0)
+    manual_slip = client.post("/slips", json=manual).json()
+    client.patch(
+        f"/slips/{manual_slip['id']}",
+        json={
+            "legs": [
+                {"leg_id": manual_slip["legs"][0]["id"], "result": "won"}
+            ]
+        },
+    )
+
+    body = client.get("/model/paper-performance").json()
+
+    assert body["generated_tickets"] == 2
+    assert body["settled_tickets"] == 2
+    assert body["won_tickets"] == 1
+    assert body["lost_tickets"] == 1
+    assert body["win_rate"] == 0.5
+    assert body["average_odds"] == 1.75
+    assert body["unit_staked"] == 2.0
+    assert body["unit_returned"] == 2.0
+    assert body["unit_profit"] == 0.0
+    assert body["unit_roi"] == 0.0
+
+
 def test_latest_model_evaluation_requires_a_published_snapshot(client):
     assert client.get("/model/evaluation/latest").status_code == 404
 

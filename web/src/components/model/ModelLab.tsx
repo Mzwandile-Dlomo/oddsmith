@@ -15,12 +15,14 @@ import {
   fetchLatestCornerEvaluation,
   fetchLatestEvaluation,
   fetchModelReadiness,
+  fetchPaperPerformance,
 } from "@/lib/api";
 import type {
   CornerEvaluationReportView,
   EvaluationReportView,
   MarketReadinessView,
   ModelReadinessView,
+  PaperPerformanceView,
 } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 
@@ -80,6 +82,71 @@ function Summary({ data }: { data: ModelReadinessView }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function PaperPerformance({ data }: { data?: PaperPerformanceView }) {
+  if (!data) {
+    return (
+      <section className="rounded-2xl border border-dashed border-[#D1D5DB] bg-[#F9FAFB] p-5">
+        <h3 className="text-sm font-semibold text-[#111827]">Generated paper track record</h3>
+        <p className="mt-1 text-xs text-[#6B7280]">Paper performance is loading or unavailable.</p>
+      </section>
+    );
+  }
+  const progress = Math.min(
+    (data.settled_tickets / Math.max(data.tracking_target, 1)) * 100,
+    100,
+  );
+  const signedUnits = `${data.unit_profit > 0 ? "+" : ""}${data.unit_profit.toFixed(2)}u`;
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E5E7EB] px-5 py-4">
+        <div>
+          <h3 className="text-sm font-semibold text-[#111827]">Generated paper track record</h3>
+          <p className="mt-1 text-xs text-[#6B7280]">
+            Daily tickets only, normalized to one simulated unit each.
+          </p>
+        </div>
+        <span className="rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-[#92400E]">
+          {data.settled_tickets} / {data.tracking_target} tracked
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-px bg-[#F3F4F6] lg:grid-cols-4">
+        <div className="bg-white px-5 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Settled</p>
+          <p className="mt-1 text-xl font-bold tabular-nums text-[#111827]">{number(data.settled_tickets)}</p>
+          <p className="text-[11px] text-[#9CA3AF]">{number(data.pending_tickets)} pending</p>
+        </div>
+        <div className="bg-white px-5 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Record</p>
+          <p className="mt-1 text-xl font-bold tabular-nums text-[#111827]">
+            {data.won_tickets}–{data.lost_tickets}
+          </p>
+          <p className="text-[11px] text-[#9CA3AF]">{percent(data.win_rate)} hit rate</p>
+        </div>
+        <div className="bg-white px-5 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Unit P&amp;L</p>
+          <p className={`mt-1 text-xl font-bold tabular-nums ${data.unit_profit > 0 ? "text-[#059669]" : data.unit_profit < 0 ? "text-[#DC2626]" : "text-[#111827]"}`}>
+            {signedUnits}
+          </p>
+          <p className="text-[11px] text-[#9CA3AF]">{data.unit_staked.toFixed(0)}u staked</p>
+        </div>
+        <div className="bg-white px-5 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Unit ROI</p>
+          <p className={`mt-1 text-xl font-bold tabular-nums ${data.unit_roi !== null && data.unit_roi > 0 ? "text-[#059669]" : data.unit_roi !== null && data.unit_roi < 0 ? "text-[#DC2626]" : "text-[#111827]"}`}>
+            {percent(data.unit_roi, true)}
+          </p>
+          <p className="text-[11px] text-[#9CA3AF]">avg odds {data.average_odds?.toFixed(2) ?? "—"}</p>
+        </div>
+      </div>
+      <div className="px-5 py-4">
+        <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
+          <div className="h-full rounded-full bg-[#6C47FF]" style={{ width: `${progress}%` }} />
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-[#6B7280]">{data.note}</p>
+      </div>
+    </section>
   );
 }
 
@@ -366,10 +433,12 @@ function ModelLabContent({
   data,
   evaluation,
   cornerEvaluation,
+  paperPerformance,
 }: {
   data: ModelReadinessView;
   evaluation?: EvaluationReportView;
   cornerEvaluation?: CornerEvaluationReportView;
+  paperPerformance?: PaperPerformanceView;
 }) {
   const stale = data.freshness_days !== null && data.freshness_days > 45;
   const cornerPriceFixtures =
@@ -403,6 +472,7 @@ function ModelLabContent({
       )}
 
       <Summary data={data} />
+      <PaperPerformance data={paperPerformance} />
       <Validation report={evaluation} />
       <CornerValidation report={cornerEvaluation} priceFixtures={cornerPriceFixtures} />
       <Coverage data={data} />
@@ -486,6 +556,12 @@ export function ModelLab() {
     staleTime: 5 * 60_000,
     retry: false,
   });
+  const paperPerformanceQuery = useQuery({
+    queryKey: ["paper-performance"],
+    queryFn: fetchPaperPerformance,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   if (query.isLoading) {
     return (
@@ -507,6 +583,7 @@ export function ModelLab() {
       data={query.data}
       evaluation={evaluationQuery.data}
       cornerEvaluation={cornerEvaluationQuery.data}
+      paperPerformance={paperPerformanceQuery.data}
     />
   );
 }

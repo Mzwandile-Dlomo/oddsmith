@@ -8,6 +8,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 from sqlmodel import Session, select
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -25,6 +26,11 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lookback-days", type=int, default=3, choices=range(1, 8))
     parser.add_argument("--max-requests", type=int, default=15, choices=range(1, 51))
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="list unresolved priced fixtures in plan mode",
+    )
     parser.add_argument(
         "--write",
         action="store_true",
@@ -96,22 +102,40 @@ async def _run() -> int:
             f"Plan only: {len(priced)} unresolved priced fixtures across {len(dates)} days; "
             f"at most {worst_case} of {args.max_requests} allowed requests. Add --write."
         )
+        if args.verbose:
+            for fixture_id, kickoff, home_team, away_team in sorted(
+                priced, key=lambda row: row[1]
+            ):
+                print(
+                    f"  {kickoff.isoformat()} | {home_team} vs {away_team} | {fixture_id}"
+                )
         return 0
 
     provider = ApiFootballProvider()
     requests = inserted = stats_requests = 0
     daily_remaining: int | None = None
+    minute_remaining: int | None = None
+    rate_limited = False
     wanted: dict[tuple[str, str], list[tuple]] = {}
     for row in priced:
         key = (team_key(row[2]), team_key(row[3]))
         wanted.setdefault(key, []).append(row)
     collected: dict[str, ApiFootballResult] = {}
+    completed_returned = 0
     for day in dates:
         if requests >= args.max_requests:
             break
-        results, quota = await provider.completed_results(day)
         requests += 1
+        try:
+            results, quota = await provider.completed_results(day)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 429:
+                raise
+            rate_limited = True
+            break
         daily_remaining = quota.requests_remaining
+        minute_remaining = quota.minute_remaining
+        completed_returned += len(results)
         for result in results:
             key = (team_key(result.home_team), team_key(result.away_team))
             candidates = wanted.get(key, [])
@@ -129,11 +153,23 @@ async def _run() -> int:
             )
             if kickoff_delta > timedelta(hours=12):
                 continue
-            if requests < args.max_requests:
-                result, quota = await provider.add_result_statistics(result)
+            collected[result.fixture_id] = result
+            if (
+                requests < args.max_requests
+                and (minute_remaining is None or minute_remaining > 0)
+            ):
                 requests += 1
                 stats_requests += 1
-                daily_remaining = quota.requests_remaining
+                try:
+                    result, quota = await provider.add_result_statistics(result)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 429:
+                        raise
+                    rate_limited = True
+                    minute_remaining = 0
+                else:
+                    daily_remaining = quota.requests_remaining
+                    minute_remaining = quota.minute_remaining
             collected[result.fixture_id] = result
 
     with Session(get_engine()) as session:
@@ -150,9 +186,11 @@ async def _run() -> int:
         slip_settlement = settle_pending_slips(session)
     print(
         f"Used {requests}/{args.max_requests} requests ({stats_requests} statistics); "
-        f"inserted {inserted} results; settled {settlement.matched} priced fixtures; "
+        f"provider returned {completed_returned} finals; matched {len(collected)} priced "
+        f"fixtures; inserted {inserted} results; settled {settlement.matched}; "
         f"settled {slip_settlement.legs_settled} paper legs across "
         f"{slip_settlement.slips_settled} tickets; "
+        f"rate limited {'yes' if rate_limited else 'no'}; "
         f"daily requests remaining {daily_remaining if daily_remaining is not None else 'unknown'}."
     )
     return 0

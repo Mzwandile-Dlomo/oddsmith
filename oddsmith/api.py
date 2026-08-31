@@ -324,6 +324,22 @@ class ModelReadinessView(BaseModel):
     next_priorities: list[str]
 
 
+class PaperPerformanceView(BaseModel):
+    generated_tickets: int
+    pending_tickets: int
+    settled_tickets: int
+    won_tickets: int
+    lost_tickets: int
+    win_rate: float | None
+    average_odds: float | None
+    unit_staked: float
+    unit_returned: float
+    unit_profit: float
+    unit_roi: float | None
+    tracking_target: int
+    note: str
+
+
 class ProbabilityMetricsView(BaseModel):
     matches: int
     accuracy: float
@@ -976,6 +992,56 @@ def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessVi
             "Ingest 2026/27 fixtures, lineups, injuries, and timestamped prices continuously.",
             "Run 1X2 and corner models in shadow mode before promotion or automated staking.",
         ],
+    )
+
+
+@app.get("/model/paper-performance", response_model=PaperPerformanceView)
+def paper_performance(session: Session = Depends(get_session)) -> PaperPerformanceView:
+    """Report generated paper tickets at a comparable one-unit stake."""
+    paper_slips = list(
+        session.exec(
+            select(Slip)
+            .where(Slip.name.like("Paper %"))
+            .order_by(Slip.created_at)
+        )
+    )
+    settled = [slip for slip in paper_slips if slip.result is not SlipResult.PENDING]
+    won = [slip for slip in settled if slip.result is SlipResult.WON]
+    returned = 0.0
+    settled_odds: list[float] = []
+    for slip in settled:
+        legs = _load_legs(session, slip.id or 0)
+        inputs = _leg_inputs(legs)
+        returned += settled_return(1.0, inputs)
+        settled_odds.append(combined_odds([leg.price for leg in legs]))
+
+    staked = float(len(settled))
+    profit = returned - staked
+    target = 100
+    return PaperPerformanceView(
+        generated_tickets=len(paper_slips),
+        pending_tickets=len(paper_slips) - len(settled),
+        settled_tickets=len(settled),
+        won_tickets=len(won),
+        lost_tickets=len(settled) - len(won),
+        win_rate=round(len(won) / len(settled), 4) if settled else None,
+        average_odds=(
+            round(sum(settled_odds) / len(settled_odds), 4)
+            if settled_odds
+            else None
+        ),
+        unit_staked=staked,
+        unit_returned=round(returned, 4),
+        unit_profit=round(profit, 4),
+        unit_roi=round(profit / staked, 4) if staked else None,
+        tracking_target=target,
+        note=(
+            "No generated paper tickets are settled yet. Save the daily paper ticket and "
+            "let result ingestion settle it automatically."
+            if not settled
+            else f"Tracking only: {len(settled)} of {target} standardized one-unit paper "
+            "tickets are settled. This sample does not unlock real-money staking."
+        ),
     )
 
 

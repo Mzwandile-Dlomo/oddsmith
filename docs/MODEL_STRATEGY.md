@@ -174,6 +174,20 @@ header returned by API-Football, and stores the upstream fixture id in
 results, it also settles matching legs on saved paper tickets; the History and
 Calendar views can therefore report realised paper P&L without manual updates.
 
+The first capped production result run linked and settled 25 priced fixtures.
+Five received post-match statistics under the request ceiling. It also settled
+a previously saved, untagged two-leg slip as a loss after its 1.56 Liverpool
+home-win leg lost. Because that record is not tagged `Paper`, it is correctly
+excluded from generated-strategy performance. Sixteen recently priced fixtures
+were still unresolved and remain queued for the next daily result pass.
+
+Model Lab now reports generated paper performance separately. Only daily slips
+whose generated name starts with `Paper ` enter this track record; manual slips
+cannot contaminate it. Each settled ticket is normalized to a one-unit stake so
+zero-stake safety does not prevent hit-rate, unit P&L, and ROI monitoring. The
+100-ticket counter is a monitoring milestone, not a promotion rule: real-money
+mode still requires the independent unseen-season gates above.
+
 ## Immediate sequence
 
 1. Keep the latest full season untouched while iterating on challenger features.

@@ -9,6 +9,7 @@ import type {
   HistoryMatch,
   MarketType,
   ModelReadinessView,
+  PaperPerformanceView,
   SlipCreate,
   SlipUpdate,
   SlipView,
@@ -89,6 +90,10 @@ export async function fetchBacktest(): Promise<BacktestView> {
 
 export async function fetchModelReadiness(): Promise<ModelReadinessView> {
   return request<ModelReadinessView>("/model/readiness");
+}
+
+export async function fetchPaperPerformance(): Promise<PaperPerformanceView> {
+  return request<PaperPerformanceView>("/model/paper-performance");
 }
 
 export async function fetchLatestEvaluation(): Promise<EvaluationReportView> {
