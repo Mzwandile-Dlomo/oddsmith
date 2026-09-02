@@ -75,6 +75,44 @@ class FetchLog(SQLModel, table=True):
     fixture_count: int = 0
 
 
+class FootballMatch(SQLModel, table=True):
+    """Canonical API-Football fixture retained independently of provider caches."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    provider_fixture_id: int = Field(index=True, unique=True)
+    league_id: int = Field(index=True)
+    league_name: str = Field(index=True)
+    league_type: str | None = Field(default=None, index=True)
+    country: str | None = Field(default=None, index=True)
+    season: int = Field(index=True)
+    round: str | None = Field(default=None, index=True)
+    kickoff_utc: datetime = Field(index=True)
+    status_long: str
+    status_short: str = Field(index=True)
+    elapsed: int | None = None
+    home_team_id: int = Field(index=True)
+    home_team: str = Field(index=True)
+    away_team_id: int = Field(index=True)
+    away_team: str = Field(index=True)
+    home_goals: int | None = None
+    away_goals: int | None = None
+    venue: dict | None = Field(default=None, sa_column=Column(JSON))
+    score: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    raw_payload: dict = Field(sa_column=Column(JSON))
+    updated_at: datetime = Field(default_factory=_now, index=True)
+
+
+class MatchResource(SQLModel, table=True):
+    """A quota-expensive fixture resource cached by fixture and resource type."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    resource_key: str = Field(index=True, unique=True)
+    provider_fixture_id: int = Field(index=True)
+    resource_type: str = Field(index=True)
+    payload: list | dict = Field(sa_column=Column(JSON))
+    fetched_at: datetime = Field(default_factory=_now, index=True)
+
+
 class OddsSnapshot(SQLModel, table=True):
     """One bookmaker outcome price observed at a specific pre-match instant."""
 

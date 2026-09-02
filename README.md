@@ -80,6 +80,39 @@ Add at least one odds-provider key to `.env`. The prediction endpoints also need
 rows in `historicalmatch`; without them the API now reports that the model is
 untrained instead of presenting a generic empty ticket.
 
+## Persistent match API
+
+The API-Football schedule is synchronized into PostgreSQL and served without a
+provider call on each app request. Preview the current 2026/27 import (one
+request per competition), then run it explicitly:
+
+```bash
+uv run --active python scripts/sync_api_football.py
+uv run --active python scripts/sync_api_football.py --write
+```
+
+Use repeated `--league` flags for a smaller job, for example
+`--league epl --league champions-league`. Schedule the write command (cron,
+systemd, GitHub Actions, or the deployment platform's scheduler) to keep scores
+and statuses current. The sync is idempotent.
+
+The stored catalogue is available through:
+
+```text
+GET /matches?season=2026&league=epl
+GET /matches/today
+GET /matches/upcoming
+GET /matches/{api_football_fixture_id}
+GET /teams/{api_football_team_id}/matches
+GET /matches/{api_football_fixture_id}/statistics
+GET /matches/{api_football_fixture_id}/odds
+GET /predictions/{api_football_fixture_id}
+```
+
+Statistics, odds, and provider predictions are fetched lazily, stored in
+PostgreSQL, and reused. Pass `refresh=true` only when a fresh provider read is
+intended. Dates and the `today` boundary use UTC.
+
 ## Quality checks
 
 ```bash

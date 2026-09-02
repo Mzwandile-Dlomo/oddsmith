@@ -167,6 +167,48 @@ class ApiFootballProvider(OddsProvider):
             if owns_client:
                 await client.aclose()
 
+    async def league_fixtures(
+        self, *, league_id: int, season: int
+    ) -> tuple[list[dict], ApiFootballQuota]:
+        """Fetch one competition-season schedule in a single provider request."""
+        return await self._raw_response(
+            "/fixtures", {"league": league_id, "season": season, "timezone": "UTC"}
+        )
+
+    async def fixture_resource(
+        self, fixture_id: int, resource: str
+    ) -> tuple[list[dict] | dict, ApiFootballQuota]:
+        """Fetch a supported match resource for lazy, persistent caching."""
+        endpoints = {
+            "details": ("/fixtures", {"id": fixture_id, "timezone": "UTC"}),
+            "statistics": ("/fixtures/statistics", {"fixture": fixture_id}),
+            "odds": ("/odds", {"fixture": fixture_id}),
+            "predictions": ("/predictions", {"fixture": fixture_id}),
+        }
+        if resource not in endpoints:
+            raise ValueError(f"unsupported fixture resource: {resource}")
+        endpoint, params = endpoints[resource]
+        return await self._raw_response(endpoint, params)
+
+    async def _raw_response(
+        self, endpoint: str, params: dict[str, object]
+    ) -> tuple[list[dict] | dict, ApiFootballQuota]:
+        client = await self._get_client()
+        owns_client = self._client is None
+        try:
+            response = await client.get(endpoint, headers=self._headers(), params=params)
+            response.raise_for_status()
+            body = response.json()
+            errors = body.get("errors")
+            if errors:
+                raise ProviderError(f"api-football returned errors: {errors}")
+            return body.get("response", []), _quota(response)
+        except httpx.HTTPError as exc:
+            raise ProviderError(f"api-football request failed: {exc}") from exc
+        finally:
+            if owns_client:
+                await client.aclose()
+
     async def add_result_statistics(
         self, result: ApiFootballResult
     ) -> tuple[ApiFootballResult, ApiFootballQuota]:

@@ -61,6 +61,7 @@ from oddsmith.odds_model.target_acca import (
 )
 from oddsmith.odds_model.value import ValuePick
 from oddsmith.history import team_stats
+from oddsmith.matches import router as matches_router
 from oddsmith.slips import (
     LegInput,
     LegResult,
@@ -89,6 +90,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(matches_router)
 
 
 def get_providers() -> list[OddsProvider]:
