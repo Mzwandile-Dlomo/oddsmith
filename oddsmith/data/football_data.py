@@ -10,8 +10,11 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
+
+import httpx
 
 from sqlmodel import Session, select
 
@@ -28,6 +31,16 @@ DIVISION_NAMES = {
     "SC0": "ScottishPremiership",
 }
 
+MAJOR_DIVISIONS = {
+    "E0": (39, "Premier League", "England"),
+    "D1": (78, "Bundesliga", "Germany"),
+    "SP1": (140, "La Liga", "Spain"),
+    "I1": (135, "Serie A", "Italy"),
+    "F1": (61, "Ligue 1", "France"),
+}
+
+BASE_URL = "https://www.football-data.co.uk/mmz4281/{season_code}/{division}.csv"
+
 
 @dataclass(frozen=True)
 class ImportResult:
@@ -36,6 +49,73 @@ class ImportResult:
     existing: int
     baseline_inserted: int
     rejected: int
+
+
+@dataclass(frozen=True)
+class FootballDataDocument:
+    season_code: str
+    division: str
+    observations: list[MatchObservation]
+    rejected: int
+
+
+class FootballDataCsvProvider:
+    """Download and normalize Football-Data league CSV documents."""
+
+    name = "football_data"
+
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        *,
+        ca_bundle: str | None = None,
+    ) -> None:
+        self._client = client
+        self._ca_bundle = ca_bundle
+
+    def fetch(self, *, season_code: str, division: str) -> FootballDataDocument:
+        season = season_start(season_code)
+        division = division.upper()
+        if division not in MAJOR_DIVISIONS:
+            raise ValueError(f"unsupported Football-Data division: {division}")
+        verify: bool | ssl.SSLContext = True
+        if self._ca_bundle:
+            verify = ssl.create_default_context()
+            verify.load_verify_locations(cafile=self._ca_bundle)
+        client = self._client or httpx.Client(
+            timeout=30,
+            follow_redirects=True,
+            verify=verify,
+        )
+        owns_client = self._client is None
+        try:
+            response = client.get(
+                BASE_URL.format(season_code=season_code, division=division)
+            )
+            response.raise_for_status()
+            observations, rejected = parse_csv(response.text, season=season)
+            return FootballDataDocument(
+                season_code=season_code,
+                division=division,
+                observations=observations,
+                rejected=rejected,
+            )
+        finally:
+            if owns_client:
+                client.close()
+
+
+def season_code(start_year: int) -> str:
+    if start_year < 1900 or start_year >= 2099:
+        raise ValueError("season start year must be between 1900 and 2098")
+    return f"{start_year % 100:02d}{(start_year + 1) % 100:02d}"
+
+
+def season_start(code: str) -> int:
+    if len(code) != 4 or not code.isdigit():
+        raise ValueError("season code must look like 2425")
+    year = int(code[:2])
+    return 1900 + year if year >= 90 else 2000 + year
 
 
 def _first(row: dict[str, str], *names: str) -> str | None:
@@ -101,6 +181,73 @@ def _source_key(division: str, season: int, kickoff: datetime, home: str, away: 
     return f"football_data:{digest}"
 
 
+def _odds_payload(row: dict[str, str]) -> dict:
+    """Normalize the commonly available maximum, average, and handicap prices."""
+    return {
+        "match_winner": {
+            "closing_max": {
+                "home": _decimal(row, "MaxCH"),
+                "draw": _decimal(row, "MaxCD"),
+                "away": _decimal(row, "MaxCA"),
+            },
+            "closing_average": {
+                "home": _decimal(row, "AvgCH"),
+                "draw": _decimal(row, "AvgCD"),
+                "away": _decimal(row, "AvgCA"),
+            },
+            "max": {
+                "home": _decimal(row, "MaxH", "BbMxH"),
+                "draw": _decimal(row, "MaxD", "BbMxD"),
+                "away": _decimal(row, "MaxA", "BbMxA"),
+            },
+            "average": {
+                "home": _decimal(row, "AvgH", "BbAvH"),
+                "draw": _decimal(row, "AvgD", "BbAvD"),
+                "away": _decimal(row, "AvgA", "BbAvA"),
+            },
+        },
+        "over_under_2_5": {
+            "closing_max": {
+                "over": _decimal(row, "MaxC>2.5"),
+                "under": _decimal(row, "MaxC<2.5"),
+            },
+            "closing_average": {
+                "over": _decimal(row, "AvgC>2.5"),
+                "under": _decimal(row, "AvgC<2.5"),
+            },
+            "max": {
+                "over": _decimal(row, "Max>2.5", "BbMx>2.5"),
+                "under": _decimal(row, "Max<2.5", "BbMx<2.5"),
+            },
+            "average": {
+                "over": _decimal(row, "Avg>2.5", "BbAv>2.5"),
+                "under": _decimal(row, "Avg<2.5", "BbAv<2.5"),
+            },
+        },
+        "asian_handicap": {
+            "line": _number(row, "AHh", "BbAHh", "B365AH"),
+            "max": {
+                "home": _decimal(row, "MaxAHH", "BbMxAHH"),
+                "away": _decimal(row, "MaxAHA", "BbMxAHA"),
+            },
+            "average": {
+                "home": _decimal(row, "AvgAHH", "BbAvAHH"),
+                "away": _decimal(row, "AvgAHA", "BbAvAHA"),
+            },
+        },
+    }
+
+
+def _number(row: dict[str, str], *names: str) -> float | None:
+    value = _first(row, *names)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def parse_csv(
     document: str,
     *,
@@ -161,7 +308,7 @@ def parse_csv(
                 close_under_2_5_odds=_decimal(
                     row, "MaxC<2.5", "Max<2.5", "B365C<2.5", "B365<2.5"
                 ),
-                raw_payload=row,
+                raw_payload={**row, "_normalized_odds": _odds_payload(row)},
             )
         )
     return observations, rejected

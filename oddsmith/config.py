@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     api_football_base_url: str = "https://v3.football.api-sports.io"
     api_football_use_rapidapi: bool = False
 
+    # Optional additional trusted root for corporate TLS inspection. This is
+    # added to the normal public CA set; verification is never disabled.
+    football_data_ca_bundle: str | None = None
+
     # --- App ---
     # Postgres in Docker by default (see docker-compose.yml). Host port 5435.
     database_url: str = Field(

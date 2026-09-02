@@ -1,11 +1,12 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import SQLModel, create_engine
+from sqlmodel import SQLModel, create_engine, select
 
 from oddsmith import db as db_module
 from oddsmith.api import app
 from oddsmith.match_sync import upsert_fixtures
 from oddsmith.matches import get_match_provider
+from oddsmith.db import FootballMatch
 
 
 def _fixture(*, status="NS", home_goals=None, away_goals=None):
@@ -106,3 +107,21 @@ def test_unknown_league_returns_validation_error(match_client):
     client, _ = match_client
     response = client.get("/matches", params={"league": "made-up-league"})
     assert response.status_code == 422
+
+
+def test_csv_match_resources_never_call_live_provider(match_client):
+    client, provider = match_client
+    with db_module.Session(db_module.get_engine()) as session:
+        match = session.exec(select(FootballMatch)).one()
+        match.raw_payload = {
+            "_source": "football_data",
+            "statistics": {"home": {"corners": 7}, "away": {"corners": 2}},
+            "odds": {"match_winner": {"max": {"home": 2.1}}},
+        }
+        session.add(match)
+        session.commit()
+
+    assert client.get("/matches/12345/statistics").json()["home"]["corners"] == 7
+    assert client.get("/matches/12345/odds").json()["match_winner"]["max"]["home"] == 2.1
+    assert client.get("/predictions/12345").status_code == 404
+    assert provider.calls == 0

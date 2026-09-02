@@ -25,29 +25,34 @@ Corners are intentionally not modelled yet. They require historical team-level
 corner counts, a separately calibrated model, and a walk-forward backtest. Odds
 alone are not enough to produce a trustworthy corner prediction.
 
-## Build the training dataset
+## Build and synchronize the match dataset
 
-Oddsmith can download Football-Data CSV archives into the enriched
-`matchobservation` table. The default divisions are EPL, Bundesliga, La Liga,
-Serie A, and Ligue 1. Without `--write`, the command only downloads and validates:
-
-```bash
-uv run --active python scripts/import_football_data.py \
-  --season-code 2223 --season-code 2324 --season-code 2425
-```
-
-After checking the row totals, explicitly write to the database configured by
-`DATABASE_URL`:
+Football-Data.co.uk is the primary source for the five major domestic leagues.
+The range sync downloads all 75 league-season CSV files from 2012/13 through
+2026/27 and normalizes completed games into `matchobservation` and
+`historicalmatch`. Football-Data has no stable fixture or team IDs, so CSV rows
+do not use the live-provider `footballmatch` catalogue and no synthetic IDs are
+generated.
 
 ```bash
-uv run --active python scripts/import_football_data.py \
-  --season-code 2223 --season-code 2324 --season-code 2425 --write
+uv run --active python scripts/sync_football_data.py \
+  --from-season 2012 --to-season 2026
 ```
 
-Imports are idempotent. Enriched rows preserve source metadata and the raw CSV
-record, while new matches are also copied into `historicalmatch` for the current
-Poisson model. Missing statistics remain null rather than being converted to
-false zeroes.
+The first command is plan-only and makes no network requests. Add `--write` to
+download and persist, or use the Make target:
+
+```bash
+uv run --active python scripts/sync_football_data.py \
+  --from-season 2012 --to-season 2026 --write
+make sync-football-data
+```
+
+Imports are idempotent. Re-running the command refreshes current-season scores
+and odds without duplicating matches. Enriched rows retain source metadata,
+normalized maximum/average 1X2 prices, over/under 2.5 prices, Asian handicap,
+and the original CSV record. Missing statistics remain null rather than being
+converted to false zeroes.
 
 The leakage-safe feature pipeline and model promotion rules are documented in
 [docs/MODEL_STRATEGY.md](docs/MODEL_STRATEGY.md).
@@ -76,15 +81,15 @@ make run
 make web-dev
 ```
 
-Add at least one odds-provider key to `.env`. The prediction endpoints also need
-rows in `historicalmatch`; without them the API now reports that the model is
-untrained instead of presenting a generic empty ticket.
+The Football-Data sync needs no API key. Live odds providers are optional and
+require their corresponding key. Oddsmith's model endpoints need rows in
+`historicalmatch`; without them the API reports that the model is untrained.
 
 ## Persistent match API
 
-The API-Football schedule is synchronized into PostgreSQL and served without a
-provider call on each app request. Preview the current 2026/27 import (one
-request per competition), then run it explicitly:
+Historical Football-Data rows are served by the `/history` and model endpoints.
+API-Football remains an optional path for competitions and live fixtures that
+the CSV source does not cover. Its sync can be previewed and run with:
 
 ```bash
 uv run --active python scripts/sync_api_football.py
@@ -102,16 +107,18 @@ The stored catalogue is available through:
 GET /matches?season=2026&league=epl
 GET /matches/today
 GET /matches/upcoming
-GET /matches/{api_football_fixture_id}
-GET /teams/{api_football_team_id}/matches
-GET /matches/{api_football_fixture_id}/statistics
-GET /matches/{api_football_fixture_id}/odds
-GET /predictions/{api_football_fixture_id}
+GET /matches/{match_id}
+GET /teams/{team_id}/matches
+GET /matches/{match_id}/statistics
+GET /matches/{match_id}/odds
+GET /predictions/{match_id}
 ```
 
-Statistics, odds, and provider predictions are fetched lazily, stored in
-PostgreSQL, and reused. Pass `refresh=true` only when a fresh provider read is
-intended. Dates and the `today` boundary use UTC.
+CSV statistics and odds are returned directly from PostgreSQL. For
+API-Football-backed rows, statistics, odds, and provider predictions are fetched
+lazily and stored. Pass `refresh=true` only when a fresh provider read is
+intended. Provider predictions are not available for CSV rows. Dates and the
+`today` boundary use UTC.
 
 ## Quality checks
 

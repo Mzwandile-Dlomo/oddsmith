@@ -88,7 +88,16 @@ async def _resource(
     resource: str,
     refresh: bool,
 ) -> list | dict:
-    _find_match(session, match_id)
+    match = _find_match(session, match_id)
+    if match.raw_payload.get("_source") == "football_data":
+        if resource == "statistics":
+            return match.raw_payload.get("statistics", {})
+        if resource == "odds":
+            return match.raw_payload.get("odds", {})
+        raise HTTPException(
+            status_code=404,
+            detail=f"{resource} is not available from Football-Data CSV",
+        )
     cached = _cached_resource(session, match_id, resource)
     if cached is not None and not refresh:
         return cached.payload
