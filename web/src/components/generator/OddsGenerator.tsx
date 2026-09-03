@@ -68,119 +68,128 @@ function AccaResults({ acca, hitRate, onSave, isSaving, savedOk, saveError }: Ac
   const validLegs = acca.legs.filter((l) => l.offered_odds > 1.0);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-xl border border-border bg-surface shadow-raised overflow-hidden">
-        <div className="border-b border-border bg-subtle px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-faint">
-            {acca.legs.length}-Leg Value Accumulator
-          </p>
-        </div>
-        <div className="divide-y divide-hairline">
-          {acca.legs.map((leg, i) => (
-            <div key={i} className="flex items-start justify-between gap-3 px-4 py-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-ink truncate">
-                  {leg.home_team} vs {leg.away_team}
-                </p>
-                <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  <span className="rounded bg-hairline px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                    {marketLabel(leg.market_type)}
+    /*
+      The picks and the caveats are separate reads. From `2xl` the results
+      column is wide enough to run them side by side rather than burying the
+      honest note under a long leg list.
+    */
+    <div className="flex flex-col gap-4 2xl:grid 2xl:grid-cols-2 2xl:items-start 2xl:gap-5">
+      <div className="flex min-w-0 flex-col gap-4">
+        <div className="rounded-xl border border-border bg-surface shadow-raised overflow-hidden">
+          <div className="border-b border-border bg-subtle px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-faint">
+              {acca.legs.length}-Leg Value Accumulator
+            </p>
+          </div>
+          <div className="divide-y divide-hairline">
+            {acca.legs.map((leg, i) => (
+              <div key={i} className="flex items-start justify-between gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-ink truncate">
+                    {leg.home_team} vs {leg.away_team}
+                  </p>
+                  <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span className="rounded bg-hairline px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                      {marketLabel(leg.market_type)}
+                    </span>
+                    <span className="text-[12px] font-semibold text-accent">
+                      {selectionLabel(leg.market_type, leg.selection)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-0.5 shrink-0">
+                  <span className="text-[15px] font-bold tabular-nums text-ink">
+                    {formatOdds(leg.offered_odds)}
                   </span>
-                  <span className="text-[12px] font-semibold text-accent">
-                    {selectionLabel(leg.market_type, leg.selection)}
+                  <span className="text-[11px] text-faint tabular-nums">
+                    Model: {formatPct(leg.model_prob)}
+                  </span>
+                  <span className={`text-[11px] font-semibold tabular-nums ${leg.edge >= 0 ? "text-success" : "text-danger"}`}>
+                    Edge {formatEdge(leg.edge)}
                   </span>
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-0.5 shrink-0">
-                <span className="text-[15px] font-bold tabular-nums text-ink">
-                  {formatOdds(leg.offered_odds)}
-                </span>
-                <span className="text-[11px] text-faint tabular-nums">
-                  Model: {formatPct(leg.model_prob)}
-                </span>
-                <span className={`text-[11px] font-semibold tabular-nums ${leg.edge >= 0 ? "text-success" : "text-danger"}`}>
-                  Edge {formatEdge(leg.edge)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-3 sm:gap-3">
-        <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center shadow-subtle sm:px-4">
-          <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
-            Combined Odds
-          </p>
-          <p className="mt-1 text-xl font-bold tabular-nums text-ink">
-            {formatOdds(acca.combined_odds)}
-          </p>
-        </div>
-        <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center shadow-subtle sm:px-4">
-          <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
-            Model Prob
-          </p>
-          <p className="mt-1 text-xl font-bold tabular-nums text-accent">
-            {formatPct(acca.combined_model_prob)}
-          </p>
-        </div>
-        <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center shadow-subtle sm:px-4">
-          <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
-            Expected Value
-          </p>
-          <p className={`mt-1 text-xl font-bold tabular-nums ${acca.combined_expected_value >= 0 ? "text-success" : "text-danger"}`}>
-            {formatSignedPercent(acca.combined_expected_value)}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        {savedOk ? (
-          <div className="flex items-center gap-2 rounded-xl border border-success-soft bg-success-faint px-4 py-3">
-            <CheckCircle className="h-4 w-4 shrink-0 text-success" />
-            <p className="text-sm font-medium text-success-deeper">Saved to My Slips</p>
+            ))}
           </div>
-        ) : (
-          <>
-            <button
-              onClick={onSave}
-              disabled={isSaving || validLegs.length === 0}
-              className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-accent bg-accent-light px-5 sm:min-h-[44px] text-sm font-semibold text-accent transition-all duration-150 hover:bg-accent-line focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSaving ? (
-                <>
-                  <Spinner size="sm" />
-                  Saving…
-                </>
-              ) : (
-                "Save to My Slips"
-              )}
-            </button>
-            {saveError && (
-              <p className="rounded-xl border border-danger-soft bg-danger-faint px-4 py-2.5 text-sm text-danger">
-                {saveError}
-              </p>
-            )}
-          </>
-        )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-3 sm:gap-3">
+          <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center shadow-subtle sm:px-4">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
+              Combined Odds
+            </p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-ink">
+              {formatOdds(acca.combined_odds)}
+            </p>
+          </div>
+          <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center shadow-subtle sm:px-4">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
+              Model Prob
+            </p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-accent">
+              {formatPct(acca.combined_model_prob)}
+            </p>
+          </div>
+          <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center shadow-subtle sm:px-4">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
+              Expected Value
+            </p>
+            <p className={`mt-1 text-xl font-bold tabular-nums ${acca.combined_expected_value >= 0 ? "text-success" : "text-danger"}`}>
+              {formatSignedPercent(acca.combined_expected_value)}
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-subtle px-4 py-3.5">
-        <div className="flex items-start gap-2">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-semibold text-warn-strong">Honest note</p>
-            <p className="text-[12px] leading-relaxed text-warn-deep">
-              These are value picks where our model rates the outcome higher than the
-              bookmaker. A multi-leg accumulator still lands only a small % of the time
-              — this targets long-term expected value, not a guaranteed win.
-            </p>
-            {hitRate !== null && (
-              <p className="mt-1 text-[11px] text-faint">
-                <Info className="mr-1 inline-block h-3 w-3" />
-                Model 1X2 accuracy (backtested): ~{Math.round(hitRate * 100)}%
+      <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          {savedOk ? (
+            <div className="flex items-center gap-2 rounded-xl border border-success-soft bg-success-faint px-4 py-3">
+              <CheckCircle className="h-4 w-4 shrink-0 text-success" />
+              <p className="text-sm font-medium text-success-deeper">Saved to My Slips</p>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={onSave}
+                disabled={isSaving || validLegs.length === 0}
+                className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-accent bg-accent-light px-5 sm:min-h-[44px] text-sm font-semibold text-accent transition-all duration-150 hover:bg-accent-line focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? (
+                  <>
+                    <Spinner size="sm" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save to My Slips"
+                )}
+              </button>
+              {saveError && (
+                <p className="rounded-xl border border-danger-soft bg-danger-faint px-4 py-2.5 text-sm text-danger">
+                  {saveError}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-border bg-subtle px-4 py-3.5">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-semibold text-warn-strong">Honest note</p>
+              <p className="text-[12px] leading-relaxed text-warn-deep">
+                These are value picks where our model rates the outcome higher than the
+                bookmaker. A multi-leg accumulator still lands only a small % of the time
+                — this targets long-term expected value, not a guaranteed win.
               </p>
-            )}
+              {hitRate !== null && (
+                <p className="mt-1 text-[11px] text-faint">
+                  <Info className="mr-1 inline-block h-3 w-3" />
+                  Model 1X2 accuracy (backtested): ~{Math.round(hitRate * 100)}%
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -262,8 +271,13 @@ export function OddsGenerator() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 xl:mx-0">
-      <div className="rounded-2xl border border-border bg-surface p-5 shadow-panel">
+    /*
+      Same split as the daily slip: the controls are short and fixed, so they
+      sit in a sticky rail from `xl` and the accumulator gets the rest of the
+      width instead of everything stacking in one 42rem column.
+    */
+    <div className="grid w-full grid-cols-1 items-start gap-5 xl:grid-cols-[20rem_minmax(0,1fr)] xl:gap-6 2xl:grid-cols-[22rem_minmax(0,1fr)]">
+      <div className="mx-auto w-full max-w-2xl rounded-2xl border border-border bg-surface p-5 shadow-panel xl:mx-0 xl:sticky xl:top-6">
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="h-4 w-4 text-accent" />
@@ -316,31 +330,33 @@ export function OddsGenerator() {
         </div>
       </div>
 
-      {accaQuery.isError && (
-        <div className="rounded-xl border border-danger-soft bg-danger-faint px-4 py-3 text-sm text-danger">
-          Failed to generate accumulator. Please try again.
-        </div>
-      )}
+      <div className="mx-auto flex w-full min-w-0 max-w-2xl flex-col gap-4 xl:mx-0 xl:max-w-none">
+        {accaQuery.isError && (
+          <div className="rounded-xl border border-danger-soft bg-danger-faint px-4 py-3 text-sm text-danger">
+            Failed to generate accumulator. Please try again.
+          </div>
+        )}
 
-      {accaQuery.isSuccess && (
-        <AccaResults
-          acca={accaQuery.data}
-          hitRate={hitRate}
-          onSave={handleSave}
-          isSaving={saveMutation.isPending}
-          savedOk={savedOk}
-          saveError={saveError}
-        />
-      )}
+        {accaQuery.isSuccess && (
+          <AccaResults
+            acca={accaQuery.data}
+            hitRate={hitRate}
+            onSave={handleSave}
+            isSaving={saveMutation.isPending}
+            savedOk={savedOk}
+            saveError={saveError}
+          />
+        )}
 
-      {!enabled && (
-        <div className="rounded-xl border border-dashed border-border px-5 py-12 text-center">
-          <TrendingUp className="mx-auto mb-3 h-8 w-8 text-outline" />
-          <p className="text-sm text-faint">
-            Choose the number of legs and click Generate.
-          </p>
-        </div>
-      )}
+        {!enabled && (
+          <div className="rounded-xl border border-dashed border-border px-5 py-12 text-center">
+            <TrendingUp className="mx-auto mb-3 h-8 w-8 text-outline" />
+            <p className="text-sm text-faint">
+              Choose the number of legs and click Generate.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
