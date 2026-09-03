@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, create_engine, select
@@ -6,7 +8,7 @@ from oddsmith import db as db_module
 from oddsmith.api import app
 from oddsmith.match_sync import upsert_fixtures
 from oddsmith.matches import get_match_provider
-from oddsmith.db import FootballMatch
+from oddsmith.db import FootballMatch, ScheduledFixture
 
 
 def _fixture(*, status="NS", home_goals=None, away_goals=None):
@@ -107,6 +109,39 @@ def test_unknown_league_returns_validation_error(match_client):
     client, _ = match_client
     response = client.get("/matches", params={"league": "made-up-league"})
     assert response.status_code == 422
+
+
+def test_upcoming_includes_source_keyed_full_season_schedule(match_client):
+    client, _ = match_client
+    with db_module.Session(db_module.get_engine()) as session:
+        session.add(
+            ScheduledFixture(
+                source_key="fixture_download:epl:2026:31",
+                source="fixture_download",
+                competition_key="epl",
+                league_id=39,
+                league_name="Premier League",
+                country="England",
+                season=2026,
+                match_number=31,
+                round_number=4,
+                kickoff_utc=datetime(2027, 5, 30, 16),
+                location="Emirates Stadium",
+                home_team="Arsenal",
+                away_team="Brighton",
+                raw_payload={},
+            )
+        )
+        session.commit()
+
+    response = client.get("/matches/upcoming", params={"league": "epl"})
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()}
+    assert "fixture_download:epl:2026:31" in ids
+
+    season_response = client.get("/matches", params={"season": 2026, "league": "epl"})
+    season_ids = {item["id"] for item in season_response.json()}
+    assert "fixture_download:epl:2026:31" in season_ids
 
 
 def test_csv_match_resources_never_call_live_provider(match_client):

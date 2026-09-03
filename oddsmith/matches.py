@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel import Session, select
 
 from oddsmith.competitions import Competition, resolve_competition
-from oddsmith.db import FootballMatch, MatchResource, get_session
+from oddsmith.db import FootballMatch, MatchResource, ScheduledFixture, get_session
 from oddsmith.providers.api_football import ApiFootballProvider
 from oddsmith.providers.base import ProviderError
 
@@ -44,6 +44,26 @@ class MatchView(BaseModel):
 
 class MatchDetailView(MatchView):
     details: list | dict | None = None
+
+
+class ScheduledMatchView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str = Field(validation_alias="source_key")
+    source: str
+    competition_key: str
+    league_id: int
+    league_name: str
+    country: str
+    season: int
+    match_number: int
+    round_number: int | None
+    kickoff_utc: datetime
+    location: str | None
+    home_team: str
+    away_team: str
+    home_goals: int | None
+    away_goals: int | None
 
 
 def get_match_provider() -> ApiFootballProvider:
@@ -129,25 +149,42 @@ def matches_today(
     return _list_matches(session, league=league, date_from=today, date_to=today)
 
 
-@router.get("/matches/upcoming", response_model=list[MatchView])
+@router.get("/matches/upcoming", response_model=list[MatchView | ScheduledMatchView])
 def upcoming_matches(
     league: str | None = None,
-    days: Annotated[int, Query(ge=1, le=90)] = 14,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    days: Annotated[int | None, Query(ge=1, le=366)] = None,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 2000,
     session: Session = Depends(get_session),
-) -> list[FootballMatch]:
+) -> list[MatchView | ScheduledMatchView]:
     now = datetime.now(UTC).replace(tzinfo=None)
-    statement = select(FootballMatch).where(
-        FootballMatch.kickoff_utc >= now,
-        FootballMatch.kickoff_utc < now + timedelta(days=days),
-    )
+    statement = select(FootballMatch).where(FootballMatch.kickoff_utc >= now)
+    schedule_statement = select(ScheduledFixture).where(ScheduledFixture.kickoff_utc >= now)
+    if days is not None:
+        end = now + timedelta(days=days)
+        statement = statement.where(FootballMatch.kickoff_utc < end)
+        schedule_statement = schedule_statement.where(ScheduledFixture.kickoff_utc < end)
     competition = _competition(league)
     if competition:
         statement = statement.where(FootballMatch.league_id == competition.api_football_id)
-    return list(session.exec(statement.order_by(FootballMatch.kickoff_utc).limit(limit)))
+        schedule_statement = schedule_statement.where(
+            ScheduledFixture.league_id == competition.api_football_id
+        )
+    live = [
+        MatchView.model_validate(match)
+        for match in session.exec(statement.order_by(FootballMatch.kickoff_utc))
+    ]
+    scheduled = [
+        ScheduledMatchView.model_validate(match)
+        for match in session.exec(
+            schedule_statement.order_by(ScheduledFixture.kickoff_utc)
+        )
+    ]
+    combined: list[MatchView | ScheduledMatchView] = [*live, *scheduled]
+    combined.sort(key=lambda match: match.kickoff_utc)
+    return combined[:limit]
 
 
-@router.get("/matches", response_model=list[MatchView])
+@router.get("/matches", response_model=list[MatchView | ScheduledMatchView])
 def list_matches(
     season: int | None = Query(default=None, ge=2000, le=2100),
     league: str | None = None,
@@ -156,8 +193,8 @@ def list_matches(
     status: str | None = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     session: Session = Depends(get_session),
-) -> list[FootballMatch]:
-    return _list_matches(
+) -> list[MatchView | ScheduledMatchView]:
+    live = _list_matches(
         session,
         season=season,
         league=league,
@@ -166,6 +203,46 @@ def list_matches(
         status=status,
         limit=limit,
     )
+    schedule_statement = select(ScheduledFixture)
+    competition = _competition(league)
+    if competition:
+        schedule_statement = schedule_statement.where(
+            ScheduledFixture.league_id == competition.api_football_id
+        )
+    if season is not None:
+        schedule_statement = schedule_statement.where(ScheduledFixture.season == season)
+    if date_from is not None:
+        schedule_statement = schedule_statement.where(
+            ScheduledFixture.kickoff_utc >= datetime.combine(date_from, time.min)
+        )
+    if date_to is not None:
+        schedule_statement = schedule_statement.where(
+            ScheduledFixture.kickoff_utc
+            < datetime.combine(date_to + timedelta(days=1), time.min)
+        )
+    if status:
+        normalized_status = status.upper()
+        if normalized_status == "NS":
+            schedule_statement = schedule_statement.where(
+                ScheduledFixture.home_goals.is_(None)
+            )
+        elif normalized_status == "FT":
+            schedule_statement = schedule_statement.where(
+                ScheduledFixture.home_goals.is_not(None)
+            )
+        else:
+            schedule_statement = schedule_statement.where(False)
+    combined: list[MatchView | ScheduledMatchView] = [
+        *(MatchView.model_validate(match) for match in live),
+        *(
+            ScheduledMatchView.model_validate(match)
+            for match in session.exec(
+                schedule_statement.order_by(ScheduledFixture.kickoff_utc).limit(limit)
+            )
+        ),
+    ]
+    combined.sort(key=lambda match: match.kickoff_utc)
+    return combined[:limit]
 
 
 def _list_matches(

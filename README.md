@@ -48,6 +48,21 @@ uv run --active python scripts/sync_football_data.py \
 make sync-football-data
 ```
 
+Complete current-season schedules come from Fixture Download's public JSON
+feeds because Football-Data CSVs contain completed results and API-Football's
+free plan does not expose 2026/27. Synchronize all five leagues with:
+
+```bash
+uv run --active python scripts/sync_fixtures.py --season 2026 --write
+# or
+make sync-fixtures
+```
+
+These rows use the source's competition-scoped `MatchNumber` in a composite
+string key; no synthetic fixture or team IDs are generated. `GET
+/matches/upcoming` returns the complete remaining schedule by default. Use
+`days=14` when only a shorter window is needed.
+
 Imports are idempotent. Re-running the command refreshes current-season scores
 and odds without duplicating matches. Enriched rows retain source metadata,
 normalized maximum/average 1X2 prices, over/under 2.5 prices, Asian handicap,

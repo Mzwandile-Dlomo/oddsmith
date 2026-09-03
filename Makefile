@@ -12,7 +12,7 @@ WEB_PORT ?= 3000
 
 .PHONY: help setup web-setup db-up db-down db-reset db-logs \
         up up-db down run web-dev test lint fmt check \
-        web-build web-lint web-check sync-football-data clean
+        web-build web-lint web-check sync-football-data sync-fixtures clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -59,6 +59,9 @@ run: db-up ## Run ONLY the API with autoreload (starts the DB first) on $(PORT)
 
 sync-football-data: ## Import Football-Data seasons 2012/13 through 2026/27
 	$(UV) python scripts/sync_football_data.py --from-season 2012 --to-season 2026 --write
+
+sync-fixtures: ## Import complete 2026/27 schedules for the five major leagues
+	$(UV) python scripts/sync_fixtures.py --season 2026 --write
 
 web-dev: ## Run ONLY the Next.js frontend dev server on $(WEB_PORT)
 	cd $(WEB) && npm run dev

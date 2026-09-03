@@ -113,6 +113,29 @@ class MatchResource(SQLModel, table=True):
     fetched_at: datetime = Field(default_factory=_now, index=True)
 
 
+class ScheduledFixture(SQLModel, table=True):
+    """A full-season fixture keyed by the source's real competition match number."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    source_key: str = Field(index=True, unique=True)
+    source: str = Field(index=True)
+    competition_key: str = Field(index=True)
+    league_id: int = Field(index=True)
+    league_name: str = Field(index=True)
+    country: str
+    season: int = Field(index=True)
+    match_number: int
+    round_number: int | None = Field(default=None, index=True)
+    kickoff_utc: datetime = Field(index=True)
+    location: str | None = None
+    home_team: str = Field(index=True)
+    away_team: str = Field(index=True)
+    home_goals: int | None = None
+    away_goals: int | None = None
+    raw_payload: dict = Field(sa_column=Column(JSON))
+    updated_at: datetime = Field(default_factory=_now, index=True)
+
+
 class OddsSnapshot(SQLModel, table=True):
     """One bookmaker outcome price observed at a specific pre-match instant."""
 
