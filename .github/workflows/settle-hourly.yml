@@ -1,0 +1,38 @@
+# Hourly settlement. Touches only the database — no provider calls, no quota —
+# so it can run often. It settles whatever the 6-hourly sync has already
+# fetched, which keeps a finished slip from sitting unsettled for hours.
+name: Settle (hourly)
+
+on:
+  schedule:
+    - cron: "20 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Never let a slow run overlap the next tick; settlement is not reentrant.
+  group: oddsmith-settle
+  cancel-in-progress: false
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The keys live as *environment* secrets on "dev", so the job has to claim
+    # that environment — a repository-level lookup would resolve to empty.
+    environment: dev
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Link fixture results to captured odds
+        run: uv run python scripts/settle_odds_snapshots.py
+
+      - name: Settle saved slip legs
+        run: uv run python scripts/settle_slips.py

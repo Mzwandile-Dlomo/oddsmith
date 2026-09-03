@@ -1,0 +1,49 @@
+# Every six hours: the steps that spend provider quota. The cadence is what
+# capture_odds.py's own docstring recommends, and it keeps both APIs well
+# inside their daily limits (ingest_current_results is capped at 15 requests
+# per run by --max-requests).
+name: Sync odds and results (6-hourly)
+
+on:
+  schedule:
+    - cron: "40 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "Days back to look for unresolved priced fixtures"
+        required: false
+        default: "3"
+
+concurrency:
+  group: oddsmith-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Secrets are scoped to the "dev" environment, not the repository.
+    environment: dev
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      # Results first: settling what has finished is worth more than pricing
+      # what hasn't, and it still runs if the odds capture later hits a limit.
+      - name: Ingest completed results and settle
+        run: |
+          uv run python scripts/ingest_current_results.py \
+            --lookback-days "${{ inputs.lookback_days || '3' }}" \
+            --write
+
+      - name: Capture a fresh window of prices
+        run: uv run python scripts/capture_odds.py --days 3
