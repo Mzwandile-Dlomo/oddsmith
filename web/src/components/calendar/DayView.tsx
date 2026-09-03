@@ -11,6 +11,7 @@ import {
   dateFromISO,
   dayLabel,
   formatSignedCurrency,
+  parseKickoff,
   toLocalISODate,
   todayISO,
 } from "@/lib/utils";
@@ -31,7 +32,7 @@ export function slipMatchDay(slip: SlipView): string {
   const earliest = slip.legs
     .map((l) => l.kickoff_utc)
     .sort((a, b) => a.localeCompare(b))[0];
-  return toLocalISODate(new Date(earliest));
+  return toLocalISODate(parseKickoff(earliest));
 }
 
 function Section({

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Trophy, TrendingUp } from "lucide-react";
 import { fetchHistoryLeagues, fetchHistoryMatches, fetchTeamStats } from "@/lib/api";
 import type { HistoryMatch, TeamStatsView } from "@/lib/types";
+import { parseKickoff } from "@/lib/utils";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SpinnerOverlay, SkeletonCard } from "@/components/ui/Spinner";
@@ -28,7 +29,7 @@ function FormChip({ result }: { result: string }) {
 function MatchRow({ match }: { match: HistoryMatch }) {
   const homeWon = match.home_goals > match.away_goals;
   const awayWon = match.away_goals > match.home_goals;
-  const date = new Date(match.kickoff_utc).toLocaleDateString("en-GB", {
+  const date = parseKickoff(match.kickoff_utc).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",

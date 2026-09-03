@@ -8,6 +8,7 @@ import {
   formatCurrency,
   formatKickoff,
   formatOdds,
+  hasFinished,
   legLabel,
   resultBadgeClass,
 } from "@/lib/utils";
@@ -57,7 +58,14 @@ export function SlipCard({ slip }: SlipCardProps) {
     mutation.mutate(body);
   };
 
-  const isPending = slip.result === "pending";
+  /*
+    A leg is settleable whenever it is still pending — not only while the whole
+    slip is. An acca goes LOST the moment one leg loses, and gating on the slip
+    left the other legs stranded on "pending" with no control to correct them,
+    even months after they kicked off.
+  */
+  const hasPendingLeg = slip.legs.some((l) => l.result === "pending");
+  const decidedWithPendingLegs = slip.result !== "pending" && hasPendingLeg;
 
   return (
     <Card className="overflow-hidden">
@@ -149,12 +157,26 @@ export function SlipCard({ slip }: SlipCardProps) {
                     <span className="text-[11px] text-faint">
                       {formatKickoff(leg.kickoff_utc)}
                     </span>
+                    {/*
+                      "Pending" on a match that finished days ago reads as if
+                      the app thinks it hasn't kicked off. It has — no result
+                      feed covers it, which is a different thing and the user's
+                      cue to settle it by hand.
+                    */}
+                    {leg.result === "pending" && hasFinished(leg.kickoff_utc) && (
+                      <span
+                        title="This match has finished, but no result has come through for it. Set the outcome yourself if you know it."
+                        className="mt-1 inline-flex w-fit items-center rounded-full border border-warn/20 bg-warn-soft px-2 py-0.5 text-[10px] font-medium text-warn"
+                      >
+                        Awaiting result
+                      </span>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-bold tabular-nums text-muted">
                       {formatOdds(leg.price)}
                     </span>
-                    {isPending ? (
+                    {leg.result === "pending" ? (
                       <>
                         {/* Settling is this page's whole job, so the control
                             takes a full-width 44px target on a phone. */}
@@ -234,7 +256,15 @@ export function SlipCard({ slip }: SlipCardProps) {
             </p>
           )}
 
-          {isPending && (
+          {decidedWithPendingLegs && (
+            <p className="mb-2 text-[11px] leading-relaxed text-faint">
+              This slip is already settled as {slip.result} — one lost leg
+              decides an acca — so recording the rest will not change the P&amp;L.
+              It only completes the record.
+            </p>
+          )}
+
+          {hasPendingLeg && (
             <Button
               onClick={handleSettle}
               disabled={mutation.isPending}

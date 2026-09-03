@@ -10,6 +10,7 @@ import {
   addDays,
   dateFromISO,
   formatSignedCurrency,
+  hasFinished,
   toLocalISODate,
   todayISO,
 } from "@/lib/utils";
@@ -23,11 +24,7 @@ function needsSettling(slips: SlipView[]): SlipView[] {
   const now = Date.now();
   return slips.filter((slip) => {
     if (slip.result !== "pending" || slip.legs.length === 0) return false;
-    const last = slip.legs
-      .map((l) => new Date(l.kickoff_utc).getTime())
-      .reduce((a, b) => Math.max(a, b), 0);
-    // Roughly a full match plus stoppage; before that the result isn't known.
-    return now > last + 2 * 60 * 60 * 1000;
+    return slip.legs.every((l) => hasFinished(l.kickoff_utc, now));
   });
 }
 

@@ -1326,7 +1326,13 @@ def update_slip(
             session.add(leg)
 
     slip.result = settle(_leg_inputs(legs))
-    slip.settled_at = datetime.now(UTC) if slip.result is not SlipResult.PENDING else None
+    # settled_at records when the slip *first* became decided. Legs can still be
+    # filled in afterwards (an acca is LOST from one lost leg while its other
+    # legs wait on a result), and recording those must not rewrite the date.
+    if slip.result is SlipResult.PENDING:
+        slip.settled_at = None
+    elif slip.settled_at is None:
+        slip.settled_at = datetime.now(UTC)
     session.add(slip)
     session.commit()
 

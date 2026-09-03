@@ -202,7 +202,9 @@ def settle_pending_slips(
             [LegInput(price=leg.price, result=leg.result) for leg in legs]
         )
         if slip.result is not SlipResult.PENDING:
-            slip.settled_at = timestamp
+            # Same rule as the API: first decided wins, later legs don't reset it.
+            if slip.settled_at is None:
+                slip.settled_at = timestamp
             slips_settled += 1
         session.add(slip)
     session.commit()

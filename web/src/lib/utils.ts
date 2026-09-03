@@ -11,9 +11,29 @@ export function formatCurrency(
   return `${currency} ${amount.toFixed(2)}`;
 }
 
+/**
+ * The API sends naive UTC timestamps — "2026-08-28T22:00:00", no offset — and
+ * `new Date` reads a date-time with no offset as *local* time. Left alone,
+ * every kickoff renders shifted by the viewer's UTC offset. Put back the "Z"
+ * the payload leaves off.
+ */
+export function parseKickoff(isoString: string): Date {
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(isoString);
+  return new Date(hasZone ? isoString : `${isoString}Z`);
+}
+
+/**
+ * Whether a fixture should have a known result by now: kickoff plus roughly a
+ * full match and stoppage. Before that the outcome genuinely isn't in yet.
+ */
+export const MATCH_DURATION_MS = 2 * 60 * 60 * 1000;
+
+export function hasFinished(kickoffUtc: string, now: number = Date.now()): boolean {
+  return now > parseKickoff(kickoffUtc).getTime() + MATCH_DURATION_MS;
+}
+
 export function formatKickoff(isoString: string): string {
-  const d = new Date(isoString);
-  return d.toLocaleString(undefined, {
+  return parseKickoff(isoString).toLocaleString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -23,8 +43,7 @@ export function formatKickoff(isoString: string): string {
 }
 
 export function formatKickoffShort(isoString: string): string {
-  const d = new Date(isoString);
-  return d.toLocaleString(undefined, {
+  return parseKickoff(isoString).toLocaleString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
     month: "short",
