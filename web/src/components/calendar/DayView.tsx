@@ -19,6 +19,8 @@ import { SlipCard } from "@/components/slips/SlipCard";
 import { DailyAcca } from "@/components/generator/DailyAcca";
 import { SkeletonCard } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Stat, StatGrid, signTone } from "@/components/ui/Stat";
+import { SectionHeading } from "@/components/shell/PageHeader";
 
 /**
  * Which day a slip belongs to — its earliest kickoff, matching the backend's
@@ -43,14 +45,7 @@ function Section({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-baseline gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-[#6B7280]">
-          {title}
-        </h2>
-        {count !== undefined && (
-          <span className="text-[11px] tabular-nums text-[#9CA3AF]">{count}</span>
-        )}
-      </div>
+      <SectionHeading title={title} count={count} />
       {children}
     </section>
   );
@@ -91,33 +86,33 @@ export function DayView({ date }: { date: string }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Link
             href="/calendar"
-            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-[#6C47FF] transition-colors hover:bg-[#EEE9FF]"
+            className="flex min-h-[40px] shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent transition-colors hover:bg-accent-light focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[30px]"
           >
             <CalendarDays size={13} />
             Calendar
           </Link>
-          <span className="text-[#D1D5DB]">/</span>
-          <h1 className="text-xl font-semibold tracking-tight text-[#111827]">
+          <span className="text-outline">/</span>
+          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-ink sm:text-xl">
             {dayLabel(date)}
           </h1>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <Link
             href={`/calendar/${prev}`}
             aria-label="Previous day"
-            className="rounded-lg border border-[#E5E7EB] bg-white p-1.5 text-[#6B7280] transition-colors hover:bg-[#F3F4F6] hover:text-[#111827]"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-9 sm:w-9"
           >
             <ChevronLeft size={16} />
           </Link>
           <Link
             href={`/calendar/${next}`}
             aria-label="Next day"
-            className="rounded-lg border border-[#E5E7EB] bg-white p-1.5 text-[#6B7280] transition-colors hover:bg-[#F3F4F6] hover:text-[#111827]"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-9 sm:w-9"
           >
             <ChevronRight size={16} />
           </Link>
@@ -125,10 +120,10 @@ export function DayView({ date }: { date: string }) {
       </div>
 
       {day && (
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-[#E5E7EB] bg-[#F3F4F6] shadow-[0_1px_3px_rgba(0,0,0,0.06)] sm:grid-cols-4">
-          <Tile label="Matches" value={String(day.fixture_count)} />
-          <Tile label="Leagues" value={String(day.leagues.length)} />
-          <Tile
+        <StatGrid min="8.5rem">
+          <Stat label="Matches" value={day.fixture_count} />
+          <Stat label="Leagues" value={day.leagues.length} />
+          <Stat
             label="Model"
             value={
               day.model?.target_met
@@ -137,26 +132,18 @@ export function DayView({ date }: { date: string }) {
                   ? "—"
                   : "No target slip"
             }
-            tone={day.model?.target_met ? "text-[#059669]" : undefined}
+            tone={day.model?.target_met ? "success" : "default"}
           />
-          <Tile
+          <Stat
             label={settled.length > 0 ? "Settled P&L" : "Slips"}
             value={
               settled.length > 0
                 ? formatSignedCurrency(pnl, currency)
-                : `${daySlips.length}`
+                : daySlips.length
             }
-            tone={
-              settled.length === 0
-                ? undefined
-                : pnl > 0
-                  ? "text-[#059669]"
-                  : pnl < 0
-                    ? "text-[#DC2626]"
-                    : undefined
-            }
+            tone={signTone(pnl, settled.length === 0)}
           />
-        </div>
+        </StatGrid>
       )}
 
       {/* A past day's slip cannot be placed any more, so lead with what happened. */}
@@ -186,7 +173,7 @@ export function DayView({ date }: { date: string }) {
         )}
 
         {fixturesError && (
-          <div className="rounded-xl border border-[#FEE2E2] bg-[#FEE2E2]/50 px-4 py-3 text-sm text-[#DC2626]">
+          <div className="rounded-xl border border-danger-line bg-danger-faint px-4 py-3 text-sm text-danger">
             Failed to load fixtures for this day.
           </div>
         )}
@@ -200,8 +187,8 @@ export function DayView({ date }: { date: string }) {
         )}
 
         {!fixturesLoading && fixtures && fixtures.length > 0 && (
-          <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
-            <div className="flex flex-col divide-y divide-[#F3F4F6]">
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+            <div className="flex flex-col divide-y divide-hairline">
               {fixtures.map((fixture) => (
                 <FixtureCard key={fixture.id} fixture={fixture} />
               ))}
@@ -213,23 +200,3 @@ export function DayView({ date }: { date: string }) {
   );
 }
 
-function Tile({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: string;
-}) {
-  return (
-    <div className="bg-white px-4 py-3">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-        {label}
-      </p>
-      <p className={`mt-1 text-base font-semibold tabular-nums ${tone ?? "text-[#111827]"}`}>
-        {value}
-      </p>
-    </div>
-  );
-}

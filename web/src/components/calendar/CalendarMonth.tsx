@@ -14,9 +14,19 @@ import {
   todayISO,
 } from "@/lib/utils";
 import { SpinnerOverlay } from "@/components/ui/Spinner";
+import { Stat, StatGrid, signTone } from "@/components/ui/Stat";
 import { DayCell } from "./DayCell";
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/** Short and single-letter forms; the narrow one needs the long one for a11y. */
+const WEEKDAYS = [
+  { short: "Mon", narrow: "M" },
+  { short: "Tue", narrow: "T" },
+  { short: "Wed", narrow: "W" },
+  { short: "Thu", narrow: "T" },
+  { short: "Fri", narrow: "F" },
+  { short: "Sat", narrow: "S" },
+  { short: "Sun", narrow: "S" },
+];
 
 function emptyDay(date: string): CalendarDay {
   return {
@@ -67,70 +77,67 @@ export function CalendarMonth() {
     };
   }, [data, month]);
 
+  const isCurrentMonth = month === `${today.slice(0, 7)}-01`;
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => setMonth(addMonths(month, -1))}
+          aria-label="Previous month"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-9 sm:w-9"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <button
+          onClick={() => setMonth(addMonths(month, 1))}
+          aria-label="Next month"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-9 sm:w-9"
+        >
+          <ChevronRight size={16} />
+        </button>
+        <h2 className="ml-2 min-w-0 flex-1 truncate text-base font-semibold tracking-tight text-ink">
+          {monthLabel(month)}
+        </h2>
+        {!isCurrentMonth && (
           <button
-            onClick={() => setMonth(addMonths(month, -1))}
-            aria-label="Previous month"
-            className="rounded-lg border border-[#E5E7EB] bg-white p-1.5 text-[#6B7280] transition-colors hover:bg-[#F3F4F6] hover:text-[#111827]"
+            onClick={() => setMonth(`${today.slice(0, 7)}-01`)}
+            className="flex min-h-[44px] shrink-0 items-center rounded-lg px-3 text-xs font-medium text-accent transition-colors hover:bg-accent-light focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[36px]"
           >
-            <ChevronLeft size={16} />
+            This month
           </button>
-          <button
-            onClick={() => setMonth(addMonths(month, 1))}
-            aria-label="Next month"
-            className="rounded-lg border border-[#E5E7EB] bg-white p-1.5 text-[#6B7280] transition-colors hover:bg-[#F3F4F6] hover:text-[#111827]"
-          >
-            <ChevronRight size={16} />
-          </button>
-          <h2 className="ml-2 text-base font-semibold tracking-tight text-[#111827]">
-            {monthLabel(month)}
-          </h2>
-          {month !== `${today.slice(0, 7)}-01` && (
-            <button
-              onClick={() => setMonth(`${today.slice(0, 7)}-01`)}
-              className="ml-2 rounded-lg px-2.5 py-1 text-xs font-medium text-[#6C47FF] transition-colors hover:bg-[#EEE9FF]"
-            >
-              This month
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-5 text-xs">
-          <Stat label="Matches" value={String(totals.fixtures)} />
-          <Stat label="Playable days" value={String(totals.playable)} />
-          <Stat
-            label={`P&L (${totals.settled} settled)`}
-            value={totals.settled === 0 ? "—" : formatSignedCurrency(totals.pnl, currency)}
-            tone={
-              totals.settled === 0
-                ? undefined
-                : totals.pnl > 0
-                  ? "text-[#059669]"
-                  : totals.pnl < 0
-                    ? "text-[#DC2626]"
-                    : undefined
-            }
-          />
-        </div>
+        )}
       </div>
 
+      <StatGrid min="8rem">
+        <Stat label="Matches" value={totals.fixtures} />
+        <Stat label="Playable days" value={totals.playable} />
+        <Stat
+          label={`P&L (${totals.settled} settled)`}
+          value={
+            totals.settled === 0 ? "—" : formatSignedCurrency(totals.pnl, currency)
+          }
+          tone={signTone(totals.pnl, totals.settled === 0)}
+        />
+      </StatGrid>
+
       {isError && (
-        <div className="rounded-xl border border-[#FEE2E2] bg-[#FEE2E2]/50 px-4 py-3 text-sm text-[#DC2626]">
+        <div className="rounded-xl border border-danger-line bg-danger-faint px-4 py-3 text-sm text-danger">
           {error instanceof Error ? error.message : "Failed to load the calendar."}
         </div>
       )}
 
-      <div className="relative overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
-        <div className="grid grid-cols-7 border-b border-[#E5E7EB] bg-[#FAFAFA]">
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <div className="grid grid-cols-7 border-b border-border bg-canvas">
           {WEEKDAYS.map((d) => (
             <div
-              key={d}
-              className="px-2 py-2 text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]"
+              key={d.short}
+              className="px-1 py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-faint sm:px-2 sm:text-left sm:tracking-widest"
             >
-              {d}
+              <abbr title={d.short} className="no-underline sm:hidden">
+                {d.narrow}
+              </abbr>
+              <span className="hidden sm:inline">{d.short}</span>
             </div>
           ))}
         </div>
@@ -148,7 +155,7 @@ export function CalendarMonth() {
         </div>
 
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+          <div className="absolute inset-0 flex items-center justify-center bg-surface/70 backdrop-blur-[1px]">
             <SpinnerOverlay label="Loading month…" />
           </div>
         )}
@@ -159,48 +166,27 @@ export function CalendarMonth() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: string;
-}) {
-  return (
-    <div className="flex flex-col">
-      <span className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-        {label}
-      </span>
-      <span className={`text-sm font-semibold tabular-nums ${tone ?? "text-[#111827]"}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 function Legend() {
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-[11px] text-[#6B7280]">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 text-[11px] text-muted sm:gap-x-5">
       <span className="flex items-center gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#059669]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-success" />
         Strong slip available
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#D97706]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-warn" />
         Slip clears target, thinner edge
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#E5E7EB]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-border" />
         No slip clears the target
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-sm bg-[#D1FAE5]" />
+        <span className="h-3 w-3 rounded-sm bg-success-soft" />
         Winning day
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-sm bg-[#FEE2E2]" />
+        <span className="h-3 w-3 rounded-sm bg-danger-soft" />
         Losing day
       </span>
     </div>

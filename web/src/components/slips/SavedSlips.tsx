@@ -17,7 +17,7 @@ export function SavedSlips() {
 
   if (isError) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+      <div className="rounded-xl border border-danger-line bg-danger-faint px-4 py-3 text-sm text-danger">
         {error instanceof Error ? error.message : "Failed to load slips."}
       </div>
     );
@@ -34,7 +34,9 @@ export function SavedSlips() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    // Two columns on wide screens rather than one very long stretched card.
+    // `items-start` lets an expanded card grow without dragging its neighbour.
+    <div className="grid items-start gap-3 xl:grid-cols-2">
       {slips.map((slip) => (
         <SlipCard key={slip.id} slip={slip} />
       ))}

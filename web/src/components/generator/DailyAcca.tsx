@@ -69,15 +69,15 @@ function Stat({
 }) {
   const toneClass =
     tone === "accent"
-      ? "text-[#6C47FF]"
+      ? "text-accent"
       : tone === "good"
-        ? "text-[#059669]"
+        ? "text-success"
         : tone === "bad"
-          ? "text-[#DC2626]"
-          : "text-[#111827]";
+          ? "text-danger"
+          : "text-ink";
   return (
-    <div className="rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 text-center shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-      <p className="text-[10px] font-medium uppercase tracking-widest text-[#9CA3AF]">
+    <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center shadow-subtle sm:px-4">
+      <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
         {label}
       </p>
       <p className={`mt-1 text-xl font-bold tabular-nums ${toneClass}`}>{value}</p>
@@ -91,19 +91,19 @@ function StakingPanel({ data }: { data: DailyAccaView }) {
 
   if (data.execution_mode === "paper") {
     return (
-      <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-4">
+      <div className="rounded-xl border border-warn-line bg-warn-faint p-4">
         <div className="flex items-start gap-3">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#D97706]" />
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-warn" />
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-[#92400E]">Paper mode · stake 0</p>
+              <p className="text-sm font-semibold text-warn-strong">Paper mode · stake 0</p>
               {data.validation_model && (
-                <span className="rounded-full border border-[#FDE68A] bg-white px-2 py-0.5 text-[10px] font-medium text-[#92400E]">
+                <span className="rounded-full border border-warn-line bg-surface px-2 py-0.5 text-[10px] font-medium text-warn-strong">
                   {data.validation_model}
                 </span>
               )}
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-[#78350F]">
+            <p className="mt-1 text-xs leading-relaxed text-warn-deep">
               {data.validation_status} The slip can be saved and tracked, but Oddsmith will
               not recommend real money while the promotion gates fail.
             </p>
@@ -114,62 +114,62 @@ function StakingPanel({ data }: { data: DailyAccaView }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center gap-2 border-b border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3">
-        <ShieldCheck className="h-4 w-4 text-[#6C47FF]" />
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#6B7280]">
+    <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-raised">
+      <div className="flex items-center gap-2 border-b border-border bg-subtle px-4 py-3">
+        <ShieldCheck className="h-4 w-4 text-accent" />
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
           Stake sizing
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-[#F3F4F6] sm:grid-cols-4">
-        <div className="bg-white px-4 py-3">
-          <p className="text-[10px] uppercase tracking-widest text-[#9CA3AF]">Stake today</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">
+      <div className="grid grid-cols-2 gap-px bg-hairline sm:grid-cols-4">
+        <div className="bg-surface px-4 py-3">
+          <p className="text-[10px] uppercase tracking-widest text-faint">Stake today</p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-ink">
             {money(s.recommended_stake)}
           </p>
-          <p className="text-[11px] text-[#9CA3AF]">{pct(s.recommended_fraction)} of bankroll</p>
+          <p className="text-[11px] text-faint">{pct(s.recommended_fraction)} of bankroll</p>
         </div>
-        <div className="bg-white px-4 py-3">
-          <p className="text-[10px] uppercase tracking-widest text-[#9CA3AF]">Growth / day</p>
+        <div className="bg-surface px-4 py-3">
+          <p className="text-[10px] uppercase tracking-widest text-faint">Growth / day</p>
           <p
             className={`mt-1 text-lg font-bold tabular-nums ${
-              s.growth_per_bet > 0 ? "text-[#059669]" : "text-[#6B7280]"
+              s.growth_per_bet > 0 ? "text-success" : "text-muted"
             }`}
           >
             {signedPct(s.growth_per_bet)}
           </p>
-          <p className="text-[11px] text-[#9CA3AF]">expected, compounding</p>
+          <p className="text-[11px] text-faint">expected, compounding</p>
         </div>
-        <div className="bg-white px-4 py-3">
-          <p className="text-[10px] uppercase tracking-widest text-[#9CA3AF]">
+        <div className="bg-surface px-4 py-3">
+          <p className="text-[10px] uppercase tracking-widest text-faint">
             After {s.horizon_bets}d
           </p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">
+          <p className="mt-1 text-lg font-bold tabular-nums text-ink">
             {money(s.projected_bankroll)}
           </p>
-          <p className="text-[11px] text-[#9CA3AF]">from {money(s.bankroll)}</p>
+          <p className="text-[11px] text-faint">from {money(s.bankroll)}</p>
         </div>
-        <div className="bg-white px-4 py-3">
-          <p className="text-[10px] uppercase tracking-widest text-[#9CA3AF]">Double in</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">
+        <div className="bg-surface px-4 py-3">
+          <p className="text-[10px] uppercase tracking-widest text-faint">Double in</p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-ink">
             {s.bets_to_double === null ? "—" : `${Math.ceil(s.bets_to_double)}d`}
           </p>
-          <p className="text-[11px] text-[#9CA3AF]">
+          <p className="text-[11px] text-faint">
             {s.bets_to_double === null ? "no edge" : "at this edge"}
           </p>
         </div>
       </div>
 
       {/* The part people skip. Keep it loud. */}
-      <div className="border-t border-[#FDE68A] bg-[#FFFBEB] px-4 py-3.5">
+      <div className="border-t border-warn-line bg-warn-faint px-4 py-3.5">
         <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#D97706]" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
           <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-semibold text-[#92400E]">
+            <p className="text-xs font-semibold text-warn-strong">
               Why you cannot just let it ride
             </p>
-            <p className="text-[12px] leading-relaxed text-[#78350F]">
+            <p className="text-[12px] leading-relaxed text-warn-deep">
               Staking the <strong>whole bankroll</strong> on a {odds(data.combined_odds)} slip
               every day ends at <strong>{money(s.let_it_ride_bankroll)}</strong> — not because
               the picks are bad, but because one loss takes everything and over{" "}
@@ -178,12 +178,12 @@ function StakingPanel({ data }: { data: DailyAccaView }) {
               <strong>{(s.prob_all_win_over_horizon * 100).toFixed(2)}%</strong>, and expects
               about <strong>{s.expected_losses_over_horizon.toFixed(1)}</strong> losing days.
             </p>
-            <p className="text-[12px] leading-relaxed text-[#78350F]">
+            <p className="text-[12px] leading-relaxed text-warn-deep">
               The figures above stake a fixed <em>fraction</em> instead (half-Kelly), which is
               what turns an edge into compounding rather than ruin.
             </p>
             {!hasEdge && (
-              <p className="mt-0.5 text-[12px] font-medium leading-relaxed text-[#92400E]">
+              <p className="mt-0.5 text-[12px] font-medium leading-relaxed text-warn-strong">
                 {s.note}
               </p>
             )}
@@ -205,13 +205,13 @@ interface DailyResultsProps {
 function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResultsProps) {
   if (data.legs.length === 0) {
     return (
-      <div className="rounded-xl border border-[#E5E7EB] bg-[#FAFAFA] px-5 py-10 text-center">
-        <CalendarDays className="mx-auto mb-3 h-8 w-8 text-[#D1D5DB]" />
-        <p className="text-sm font-medium text-[#6B7280]">No slip today</p>
-        <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-[#9CA3AF]">
+      <div className="rounded-xl border border-border bg-canvas px-5 py-10 text-center">
+        <CalendarDays className="mx-auto mb-3 h-8 w-8 text-outline" />
+        <p className="text-sm font-medium text-muted">No slip today</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-faint">
           {data.note}
         </p>
-        <p className="mt-3 text-[11px] text-[#9CA3AF]">
+        <p className="mt-3 text-[11px] text-faint">
           {data.fixtures_scanned} fixtures scanned · {data.candidates_scanned} value candidates
         </p>
       </div>
@@ -220,54 +220,54 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[11px] text-[#9CA3AF]">
+      <p className="text-[11px] text-faint">
         {data.fixtures_scanned} fixtures scanned · {data.candidates_scanned} value candidates ·{" "}
         {data.pool_size} passed safety filters
       </p>
       {!data.target_met && (
-        <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-[12px] leading-relaxed text-[#78350F]">
+        <div className="rounded-xl border border-warn-line bg-warn-faint px-4 py-3 text-[12px] leading-relaxed text-warn-deep">
           {data.note}
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <div className="flex items-center justify-between border-b border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-raised">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-subtle px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-faint">
             {data.legs.length}-Leg Daily Slip
           </p>
-          <p className="text-[10px] font-medium uppercase tracking-widest text-[#9CA3AF]">
+          <p className="text-[10px] font-medium uppercase tracking-widest text-faint">
             {data.execution_mode === "paper" ? "Paper ticket" : "Live eligible"} · Target {odds(data.target_odds)}
           </p>
         </div>
-        <div className="divide-y divide-[#F3F4F6]">
+        <div className="divide-y divide-hairline">
           {data.legs.map((leg, i) => (
-            <div key={i} className="flex items-start justify-between gap-3 px-4 py-3">
+            <div key={i} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium text-[#111827]">
+                <p className="truncate text-[13px] font-medium text-ink">
                   {leg.home_team} vs {leg.away_team}
                 </p>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                  <span className="rounded bg-[#F3F4F6] px-1.5 py-0.5 text-[10px] font-medium text-[#6B7280]">
+                  <span className="rounded bg-hairline px-1.5 py-0.5 text-[10px] font-medium text-muted">
                     {marketLabel(leg.market_type)}
                   </span>
-                  <span className="text-[12px] font-semibold text-[#6C47FF]">
+                  <span className="text-[12px] font-semibold text-accent">
                     {selectionLabel(leg.market_type, leg.selection)}
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] text-[#9CA3AF]">
+                <p className="mt-1 text-[11px] text-faint">
                   {[leg.league, leg.kickoff_utc ? formatKickoffShort(leg.kickoff_utc) : null]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-0.5">
-                <span className="text-[15px] font-bold tabular-nums text-[#111827]">
+              <div className="flex shrink-0 flex-wrap items-baseline gap-x-2 sm:flex-col sm:items-end sm:gap-0.5">
+                <span className="text-[15px] font-bold tabular-nums text-ink">
                   {odds(leg.offered_odds)}
                 </span>
-                <span className="text-[11px] tabular-nums text-[#9CA3AF]">
+                <span className="text-[11px] tabular-nums text-faint">
                   Model: {pct(leg.model_prob)}
                 </span>
-                <span className="text-[11px] font-medium tabular-nums text-[#059669]">
+                <span className="text-[11px] font-medium tabular-nums text-success">
                   Edge {signedPct(leg.edge)} · EV {signedPct(leg.expected_value)}
                 </span>
               </div>
@@ -276,7 +276,7 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-3 sm:gap-3">
         <Stat label="Combined" value={odds(data.combined_odds)} />
         <Stat label="Chance to land" value={pct(data.combined_model_prob)} tone="accent" />
         <Stat
@@ -289,16 +289,16 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
       <StakingPanel data={data} />
 
       {savedOk ? (
-        <div className="flex items-center gap-2 rounded-xl border border-[#D1FAE5] bg-[#ECFDF5] px-4 py-3">
-          <CheckCircle className="h-4 w-4 shrink-0 text-[#059669]" />
-          <p className="text-sm font-medium text-[#065F46]">Saved to My Slips</p>
+        <div className="flex items-center gap-2 rounded-xl border border-success-soft bg-success-faint px-4 py-3">
+          <CheckCircle className="h-4 w-4 shrink-0 text-success" />
+          <p className="text-sm font-medium text-success-deeper">Saved to My Slips</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
           <button
             onClick={onSave}
             disabled={isSaving}
-            className="flex h-10 items-center justify-center gap-2 rounded-xl border border-[#6C47FF] bg-[#EEE9FF] px-5 text-sm font-semibold text-[#6C47FF] transition-all duration-150 hover:bg-[#DDD5FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-accent bg-accent-light px-5 sm:min-h-[44px] text-sm font-semibold text-accent transition-all duration-150 hover:bg-accent-line focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? (
               <>
@@ -312,7 +312,7 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
             )}
           </button>
           {saveError && (
-            <p className="rounded-xl border border-[#FEE2E2] bg-[#FEF2F2] px-4 py-2.5 text-sm text-[#DC2626]">
+            <p className="rounded-xl border border-danger-soft bg-danger-faint px-4 py-2.5 text-sm text-danger">
               {saveError}
             </p>
           )}
@@ -409,14 +409,14 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_4px_16px_rgba(0,0,0,0.06)]">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 xl:mx-0">
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-panel">
         <div className="mb-4">
           <div className="mb-1 flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-[#6C47FF]" />
-            <h2 className="text-sm font-semibold text-[#111827]">Daily Slip</h2>
+            <CalendarDays className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold text-ink">Daily Slip</h2>
           </div>
-          <p className="text-xs text-[#9CA3AF]">
+          <p className="text-xs text-faint">
             The slip most likely to land that still clears your target price — plus how much
             to stake so it compounds.
           </p>
@@ -424,7 +424,7 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
 
         <div className="flex flex-col gap-4">
           <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-faint">
               Target odds
             </p>
             <div className="flex gap-2">
@@ -432,10 +432,10 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
                 <button
                   key={t}
                   onClick={() => setTargetOdds(t)}
-                  className={`h-9 w-14 rounded-lg border text-sm font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 ${
+                  className={`h-11 w-14 rounded-lg border text-sm font-semibold sm:h-9 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                     targetOdds === t
-                      ? "border-[#6C47FF]/40 bg-[#EEE9FF] text-[#6C47FF] ring-1 ring-[#6C47FF]/20"
-                      : "border-[#E5E7EB] bg-white text-[#374151] hover:border-[#D1D5DB] hover:bg-[#F9FAFB]"
+                      ? "border-accent/40 bg-accent-light text-accent ring-1 ring-accent/20"
+                      : "border-border bg-surface text-ink-soft hover:border-outline hover:bg-subtle"
                   }`}
                 >
                   {t.toFixed(2)}
@@ -445,7 +445,7 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
           </div>
 
           <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-faint">
               Betting markets
             </p>
             <div className="flex flex-wrap gap-2">
@@ -457,10 +457,10 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
                     type="button"
                     aria-pressed={active}
                     onClick={() => toggleMarket(type)}
-                    className={`h-9 rounded-lg border px-3 text-xs font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 ${
+                    className={`h-11 rounded-lg border px-3 text-xs font-semibold sm:h-9 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                       active
-                        ? "border-[#6C47FF]/40 bg-[#EEE9FF] text-[#6C47FF] ring-1 ring-[#6C47FF]/20"
-                        : "border-[#E5E7EB] bg-white text-[#6B7280] hover:border-[#D1D5DB]"
+                        ? "border-accent/40 bg-accent-light text-accent ring-1 ring-accent/20"
+                        : "border-border bg-surface text-muted hover:border-outline"
                     }`}
                   >
                     {label}
@@ -468,20 +468,20 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
                 );
               })}
               <span
-                className="flex h-9 cursor-not-allowed items-center rounded-lg border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-3 text-xs font-medium text-[#9CA3AF]"
+                className="flex h-11 cursor-not-allowed items-center rounded-lg border border-dashed border-outline bg-subtle px-3 sm:h-9 text-xs font-medium text-faint"
                 title="Corner count model exists; price history is still too small for ticket use"
               >
                 Corners · collecting prices
               </span>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-[#9CA3AF]">
+            <p className="mt-2 text-[11px] leading-relaxed text-faint">
               The corner count model is walk-forward tested, but only a few priced fixtures
               exist. It stays disabled until the price-based sample can validate ROI.
             </p>
           </div>
 
           <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-faint">
               Bankroll
             </p>
             <div className="flex gap-2">
@@ -489,10 +489,10 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
                 <button
                   key={b}
                   onClick={() => setBankroll(b)}
-                  className={`h-9 w-16 rounded-lg border text-sm font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 ${
+                  className={`h-11 w-16 rounded-lg border text-sm font-semibold sm:h-9 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                     bankroll === b
-                      ? "border-[#6C47FF]/40 bg-[#EEE9FF] text-[#6C47FF] ring-1 ring-[#6C47FF]/20"
-                      : "border-[#E5E7EB] bg-white text-[#374151] hover:border-[#D1D5DB] hover:bg-[#F9FAFB]"
+                      ? "border-accent/40 bg-accent-light text-accent ring-1 ring-accent/20"
+                      : "border-border bg-surface text-ink-soft hover:border-outline hover:bg-subtle"
                   }`}
                 >
                   {b}
@@ -504,7 +504,7 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
           <button
             onClick={handleGenerate}
             disabled={dailyQuery.isFetching || markets.length === 0}
-            className="flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6C47FF] px-5 text-sm font-semibold text-white transition-all duration-150 hover:bg-[#5B3AEE] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-accent px-5 sm:min-h-[44px] text-sm font-semibold text-white transition-all duration-150 hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {dailyQuery.isFetching ? (
               <>
@@ -522,7 +522,7 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
       </div>
 
       {dailyQuery.isError && (
-        <div className="rounded-xl border border-[#FEE2E2] bg-[#FEF2F2] px-4 py-3 text-sm text-[#DC2626]">
+        <div className="rounded-xl border border-danger-soft bg-danger-faint px-4 py-3 text-sm text-danger">
           {dailyQuery.error instanceof Error
             ? dailyQuery.error.message
             : "Failed to build today's slip. Please try again."}
@@ -540,9 +540,9 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
       )}
 
       {!enabled && (
-        <div className="rounded-xl border border-dashed border-[#E5E7EB] px-5 py-12 text-center">
-          <CalendarDays className="mx-auto mb-3 h-8 w-8 text-[#D1D5DB]" />
-          <p className="text-sm text-[#9CA3AF]">
+        <div className="rounded-xl border border-dashed border-border px-5 py-12 text-center">
+          <CalendarDays className="mx-auto mb-3 h-8 w-8 text-outline" />
+          <p className="text-sm text-faint">
             Pick a target price and bankroll, then build today&apos;s slip.
           </p>
         </div>

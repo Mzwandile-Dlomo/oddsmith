@@ -3,30 +3,72 @@
 @theme {
   --font-sans: var(--font-geist);
 
+  /* Brand */
   --color-accent:        #6C47FF;
   --color-accent-hover:  #5A38E8;
   --color-accent-light:  #EEE9FF;
   --color-accent-ring:   #6C47FF40;
 
-  --color-bg:            #FAFAFA;
+  /* Surfaces — canvas sits behind, surface is every card and panel. */
+  --color-canvas:        #FAFAFA;
   --color-surface:       #FFFFFF;
+  --color-subtle:        #F9FAFB;
+  --color-hairline:      #F3F4F6;
   --color-border:        #E5E7EB;
-  --color-border-light:  #F3F4F6;
+  --color-outline:       #D1D5DB;
 
-  --color-text-primary:   #111827;
-  --color-text-secondary: #6B7280;
-  --color-text-disabled:  #9CA3AF;
+  /* Text — ink reads as a heading, muted as a label, faint as metadata. */
+  --color-ink:           #111827;
+  --color-ink-soft:      #374151;
+  --color-muted-strong:  #4B5563;
+  --color-muted:         #6B7280;
+  --color-faint:         #9CA3AF;
 
+  /* Status. Each ramp runs faint (wash) → line (border) → soft (fill) →
+     base (text on soft) → deep (text on faint). */
   --color-success:        #059669;
-  --color-success-bg:     #D1FAE5;
-  --color-error:          #DC2626;
-  --color-error-bg:       #FEE2E2;
-  --color-warning:        #D97706;
-  --color-warning-bg:     #FEF3C7;
+  --color-success-bright: #10B981;
+  --color-success-faint:  #ECFDF5;
+  --color-success-line:   #A7F3D0;
+  --color-success-soft:   #D1FAE5;
+  --color-success-deep:   #047857;
+  --color-success-deeper: #065F46;
 
-  --shadow-card:    0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-panel:   0 4px 16px rgba(0,0,0,0.08);
+  --color-danger:        #DC2626;
+  --color-danger-faint:  #FEF2F2;
+  --color-danger-line:   #FECACA;
+  --color-danger-soft:   #FEE2E2;
+  --color-danger-deep:   #B91C1C;
+
+  --color-warn:          #D97706;
+  --color-warn-faint:    #FFFBEB;
+  --color-warn-line:     #FDE68A;
+  --color-warn-soft:     #FEF3C7;
+  --color-warn-mid:      #B45309;
+  --color-warn-strong:   #92400E;
+  --color-warn-deep:     #78350F;
+
+  /* Violet tints beyond the accent, and the indigo used for model callouts. */
+  --color-accent-faint:  #F5F3FF;
+  --color-accent-line:   #DDD6FE;
+  --color-accent-mid:    #C4B5FD;
+
+  --color-info:          #4338CA;
+  --color-info-faint:    #EEF2FF;
+  --color-info-line:     #C7D2FE;
+
+  --shadow-subtle:   0 1px 3px rgba(0,0,0,0.04);
+  --shadow-card:     0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-raised:   0 1px 4px rgba(0,0,0,0.06);
+  --shadow-glow:     0 0 0 3px rgba(108,71,255,0.08);
+  --shadow-panel:    0 4px 16px rgba(0,0,0,0.08);
   --shadow-elevated: 0 8px 32px rgba(0,0,0,0.10);
+  --shadow-sheet:    0 -8px 32px rgba(0,0,0,0.12);
+
+  /* Shell metrics, shared by the fixed chrome and the padding that clears it. */
+  --spacing-sidebar: 15rem;
+  --spacing-tabbar:  3.5rem;
+  --spacing-topbar:  3.5rem;
 }
 
 *,
@@ -38,10 +80,70 @@
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Anchor jumps and scroll-into-view clear the sticky mobile top bar. */
+  scroll-padding-top: calc(var(--spacing-topbar) + 0.5rem);
 }
 
 body {
-  background-color: #FAFAFA;
-  color: #111827;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-geist), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Nothing in this app is a horizontal-scrolling page; wide content scrolls
+     inside its own container instead. */
+  overflow-x: hidden;
+}
+
+/* Numeric columns stay aligned when values change under them. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * The one page container. Fluid to a wide cap so large monitors get more
+ * content rather than more gutter, with padding that tightens on phones.
+ */
+@utility page-container {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 108rem;
+  padding-inline: 1rem;
+
+  @media (width >= 40rem) {
+    padding-inline: 1.5rem;
+  }
+  @media (width >= 80rem) {
+    padding-inline: 2.5rem;
+  }
+}
+
+/* Horizontally scrollable strips (tables, chip rows) without a visible bar. */
+@utility scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Safe-area helpers for the fixed mobile chrome on notched devices. */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@utility inset-safe-bottom {
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

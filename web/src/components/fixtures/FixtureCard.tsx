@@ -14,55 +14,60 @@ export function FixtureCard({ fixture }: FixtureCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="group bg-white transition-colors duration-150 hover:bg-[#FAFAFA]">
+    <div className="group bg-surface transition-colors duration-150 hover:bg-canvas">
       <button
-        className="w-full px-4 py-3.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#6C47FF]/30"
+        className="w-full px-4 py-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
       >
         <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col gap-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="truncate text-sm font-semibold text-[#111827]">
+          <div className="flex min-w-0 flex-col gap-1">
+            {/*
+              Stacked on phones so both club names survive in full; a single
+              "Home vs Away" line only leaves ~120px each at 375px, which cuts
+              most real club names in half.
+            */}
+            <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+              <span className="truncate text-sm font-semibold text-ink">
                 {fixture.home_team}
               </span>
-              <span className="shrink-0 rounded bg-[#F3F4F6] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              <span className="hidden shrink-0 rounded bg-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-faint sm:inline">
                 vs
               </span>
-              <span className="truncate text-sm font-semibold text-[#111827]">
+              <span className="truncate text-sm font-semibold text-ink">
                 {fixture.away_team}
               </span>
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-[#9CA3AF]">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-faint">
               {fixture.league && (
-                <span className="flex items-center gap-1">
-                  <Trophy size={10} className="shrink-0 text-[#6C47FF]/60" />
-                  <span className="font-medium">{fixture.league}</span>
+                <span className="flex min-w-0 items-center gap-1">
+                  <Trophy size={10} className="shrink-0 text-accent/60" />
+                  <span className="truncate font-medium">{fixture.league}</span>
                 </span>
               )}
-              <span className="flex items-center gap-1">
+              <span className="flex shrink-0 items-center gap-1">
                 <Clock size={10} className="shrink-0" />
                 {formatKickoffShort(fixture.kickoff_utc)}
               </span>
             </div>
           </div>
-          <div
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-all duration-150 ${
+          <span
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all duration-150 ${
               expanded
-                ? "border-[#6C47FF]/30 bg-[#EEE9FF] text-[#6C47FF]"
-                : "border-[#E5E7EB] bg-[#F9FAFB] text-[#9CA3AF] group-hover:border-[#D1D5DB] group-hover:text-[#6B7280]"
+                ? "border-accent/30 bg-accent-light text-accent"
+                : "border-border bg-subtle text-faint group-hover:border-outline group-hover:text-muted"
             }`}
           >
             <ChevronDown
-              size={12}
+              size={14}
               className={`transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
             />
-          </div>
+          </span>
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-[#F3F4F6] bg-[#FAFAFA]/70 px-4 pb-4 pt-3">
+        <div className="border-t border-hairline bg-canvas/70 px-4 pb-4 pt-3">
           <MarketPicker fixture={fixture} />
         </div>
       )}

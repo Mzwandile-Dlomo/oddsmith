@@ -8,19 +8,24 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<string, string> = {
   primary:
-    "bg-[#6C47FF] text-white hover:bg-[#5A38E8] active:scale-[0.98] shadow-sm",
+    "bg-accent text-white hover:bg-accent-hover active:scale-[0.98] shadow-sm",
   secondary:
-    "bg-white text-[#111827] border border-[#E5E7EB] hover:bg-[#F9FAFB] active:scale-[0.98]",
+    "bg-surface text-ink border border-border hover:bg-subtle active:scale-[0.98]",
   ghost:
-    "bg-transparent text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] active:scale-[0.98]",
+    "bg-transparent text-muted hover:bg-hairline hover:text-ink active:scale-[0.98]",
   danger:
-    "bg-[#FEE2E2]/60 text-[#DC2626] border border-[#DC2626]/20 hover:bg-[#FEE2E2] active:scale-[0.98]",
+    "bg-danger-soft/60 text-danger border border-danger/20 hover:bg-danger-soft active:scale-[0.98]",
 };
 
+/**
+ * Touch targets clear 44px on phones and tighten up from `sm` where a pointer
+ * is doing the aiming. `min-h` rather than `py` so the height is guaranteed
+ * regardless of what the label wraps to.
+ */
 const sizeClasses: Record<string, string> = {
-  sm: "px-3 py-1.5 text-xs rounded-lg",
-  md: "px-4 py-2 text-sm rounded-lg",
-  lg: "px-5 py-2.5 text-sm rounded-xl",
+  sm: "min-h-[44px] px-3 text-xs rounded-lg sm:min-h-[32px]",
+  md: "min-h-[44px] px-4 text-sm rounded-lg sm:min-h-[38px]",
+  lg: "min-h-[48px] px-5 text-sm rounded-xl sm:min-h-[44px]",
 };
 
 export function Button({
@@ -34,7 +39,7 @@ export function Button({
   return (
     <button
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center gap-2 font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...props}
     >
       {children}

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 
 from sqlmodel import Session, select
 
 from oddsmith.db import ScheduledFixture
+from oddsmith.models import Fixture
 
 
 def upsert_scheduled_fixtures(
@@ -42,3 +43,37 @@ def upsert_scheduled_fixtures(
         updated += 1
     session.commit()
     return inserted, updated
+
+
+def read_scheduled_fixtures(
+    session: Session, *, date_from: datetime, date_to: datetime
+) -> list[Fixture]:
+    """Return persisted full-season fixtures without contacting a provider."""
+    # Match the odds cache's API semantics: date-only query parameters arrive
+    # as midnight, but represent the complete first and last calendar days.
+    start = datetime.combine(_naive_utc(date_from).date(), time.min)
+    end = datetime.combine(_naive_utc(date_to).date(), time.max)
+    rows = session.exec(
+        select(ScheduledFixture)
+        .where(
+            ScheduledFixture.kickoff_utc >= start,
+            ScheduledFixture.kickoff_utc <= end,
+        )
+        .order_by(ScheduledFixture.kickoff_utc)
+    )
+    return [
+        Fixture(
+            id=row.source_key,
+            home_team=row.home_team,
+            away_team=row.away_team,
+            kickoff_utc=row.kickoff_utc.replace(tzinfo=UTC),
+            league=row.league_name,
+            provider=row.source,
+        )
+        for row in rows
+    ]
+
+
+def _naive_utc(value: datetime) -> datetime:
+    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).replace(tzinfo=None)

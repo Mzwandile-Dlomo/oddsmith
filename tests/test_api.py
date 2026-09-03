@@ -13,6 +13,7 @@ from oddsmith.db import (
     HistoricalMatch,
     MatchObservation,
     ModelEvaluationSnapshot,
+    ScheduledFixture,
 )
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider
@@ -555,6 +556,47 @@ def test_calendar_never_calls_a_provider(client, monkeypatch):
     assert called is False
     # No day was ever fetched, so every day is honestly empty.
     assert all(d["fixture_count"] == 0 for d in resp.json()["days"])
+
+
+def test_calendar_and_fixture_list_include_persisted_schedule(client):
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            ScheduledFixture(
+                source_key="fixture_download:epl:2026:27",
+                source="fixture_download",
+                competition_key="epl",
+                league_id=39,
+                league_name="Premier League",
+                country="England",
+                season=2026,
+                match_number=27,
+                round_number=3,
+                kickoff_utc=datetime(2026, 9, 4, 19),
+                home_team="Ipswich",
+                away_team="Liverpool",
+                raw_payload={},
+            )
+        )
+        session.commit()
+
+    day = client.get(
+        "/calendar", params={"date_from": "2026-09-04", "date_to": "2026-09-04"}
+    ).json()["days"][0]
+    fixtures = client.get(
+        "/fixtures",
+        params={
+            # This is how the day view calls the API; both values parse as
+            # midnight and must still cover the complete calendar day.
+            "date_from": "2026-09-04",
+            "date_to": "2026-09-04",
+            "cached_only": True,
+        },
+    ).json()
+
+    assert day["fixture_count"] == 1
+    assert day["leagues"] == ["Premier League"]
+    assert fixtures[0]["id"] == "fixture_download:epl:2026:27"
+    assert fixtures[0]["markets"] == []
 
 
 def test_calendar_buckets_a_slip_by_its_earliest_kickoff_not_creation(client):

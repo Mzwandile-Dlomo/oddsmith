@@ -98,26 +98,26 @@ export function toISODate(date: Date): string {
 export function resultColor(result: LegResult | SlipResult): string {
   switch (result) {
     case "won":
-      return "text-emerald-700";
+      return "text-success-deep";
     case "lost":
-      return "text-red-600";
+      return "text-danger";
     case "void":
-      return "text-gray-400";
+      return "text-faint";
     default:
-      return "text-amber-600";
+      return "text-warn";
   }
 }
 
 export function resultBadgeClass(result: LegResult | SlipResult): string {
   switch (result) {
     case "won":
-      return "bg-[#D1FAE5] text-[#059669] border-[#059669]/20";
+      return "bg-success-soft text-success border-success/20";
     case "lost":
-      return "bg-[#FEE2E2] text-[#DC2626] border-[#DC2626]/20";
+      return "bg-danger-soft text-danger border-danger/20";
     case "void":
-      return "bg-gray-100 text-gray-500 border-gray-200";
+      return "bg-hairline text-muted border-border";
     default:
-      return "bg-[#FEF3C7] text-[#D97706] border-[#D97706]/20";
+      return "bg-warn-soft text-warn border-warn/20";
   }
 }
 
@@ -226,4 +226,22 @@ export function formatSignedCurrency(amount: number, currency = "USD"): string {
 
 export function formatPercent(value: number, digits = 0): string {
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+/**
+ * Signed amount with the currency dropped and thousands abbreviated, for
+ * places too narrow for the full string — calendar cells, mobile chips.
+ */
+export function formatCompactSigned(amount: number): string {
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  const abs = Math.abs(amount);
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(1)}k`;
+  // Whole numbers are the common case and read better without ".00".
+  return `${sign}${Number.isInteger(abs) ? abs : abs.toFixed(2)}`;
+}
+
+/** Signed percentage, e.g. 0.0421 → "+4.2%". Input is a ratio, not a percent. */
+export function formatSignedPercent(value: number, digits = 1): string {
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  return `${sign}${Math.abs(value * 100).toFixed(digits)}%`;
 }

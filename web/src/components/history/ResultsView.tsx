@@ -11,11 +11,11 @@ import { SpinnerOverlay, SkeletonCard } from "@/components/ui/Spinner";
 
 function FormChip({ result }: { result: string }) {
   const colorMap: Record<string, string> = {
-    W: "bg-[#059669] text-white",
-    D: "bg-[#D97706] text-white",
-    L: "bg-[#DC2626] text-white",
+    W: "bg-success text-white",
+    D: "bg-warn text-white",
+    L: "bg-danger text-white",
   };
-  const cls = colorMap[result] ?? "bg-[#E5E7EB] text-[#6B7280]";
+  const cls = colorMap[result] ?? "bg-border text-muted";
   return (
     <span
       className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${cls}`}
@@ -35,35 +35,41 @@ function MatchRow({ match }: { match: HistoryMatch }) {
   });
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+    /*
+      Phones get a two-row layout: names on their own line with the score, then
+      the date beneath. Squeezing name/score/name/date onto one line left each
+      club roughly 74px at 375px, which cut most real names in half.
+    */
+    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface px-4 py-3 shadow-subtle sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
         <span
-          className={`truncate text-sm ${homeWon ? "font-semibold text-[#111827]" : "font-normal text-[#6B7280]"}`}
+          className={`truncate text-sm ${homeWon ? "font-semibold text-ink" : "font-normal text-muted"}`}
         >
           {match.home_team}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           <span
-            className={`text-base tabular-nums ${homeWon ? "font-bold text-[#111827]" : "font-semibold text-[#6B7280]"}`}
+            className={`text-base tabular-nums ${homeWon ? "font-bold text-ink" : "font-semibold text-muted"}`}
           >
             {match.home_goals}
           </span>
-          <span className="text-xs font-medium text-[#9CA3AF]">–</span>
+          <span className="text-xs font-medium text-faint">–</span>
           <span
-            className={`text-base tabular-nums ${awayWon ? "font-bold text-[#111827]" : "font-semibold text-[#6B7280]"}`}
+            className={`text-base tabular-nums ${awayWon ? "font-bold text-ink" : "font-semibold text-muted"}`}
           >
             {match.away_goals}
           </span>
         </div>
         <span
-          className={`truncate text-right text-sm ${awayWon ? "font-semibold text-[#111827]" : "font-normal text-[#6B7280]"}`}
+          className={`truncate text-right text-sm ${awayWon ? "font-semibold text-ink" : "font-normal text-muted"}`}
         >
           {match.away_team}
         </span>
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-0.5">
-        <span className="text-[11px] text-[#9CA3AF]">{date}</span>
-        <span className="text-[11px] text-[#C4B5FD]">Season {match.season}</span>
+      <div className="flex shrink-0 items-center gap-2 text-[11px] sm:flex-col sm:items-end sm:gap-0.5">
+        <span className="text-faint">{date}</span>
+        {/* Was `text-accent-mid` (violet-300) on white — about 1.9:1, well under AA. */}
+        <span className="text-muted">Season {match.season}</span>
       </div>
     </div>
   );
@@ -77,11 +83,11 @@ function TeamStatsPanel({
   return (
     <Card className="p-5">
       <div className="mb-4 flex items-center gap-2">
-        <Trophy className="h-4 w-4 text-[#6C47FF]" />
-        <h3 className="text-sm font-semibold text-[#111827]">{stats.team}</h3>
+        <Trophy className="h-4 w-4 text-accent" />
+        <h3 className="text-sm font-semibold text-ink">{stats.team}</h3>
       </div>
 
-      <div className="mb-4 grid grid-cols-4 gap-3">
+      <div className="mb-4 grid grid-cols-2 gap-2 min-[380px]:grid-cols-4 sm:gap-3">
         {(
           [
             { label: "Played", value: stats.played },
@@ -92,49 +98,49 @@ function TeamStatsPanel({
         ).map(({ label, value }) => (
           <div
             key={label}
-            className="flex flex-col items-center rounded-xl bg-[#F9FAFB] px-2 py-3"
+            className="flex min-w-0 flex-col items-center rounded-xl bg-subtle px-2 py-3"
           >
-            <span className="text-lg font-bold text-[#111827]">{value}</span>
-            <span className="text-[11px] text-[#9CA3AF]">{label}</span>
+            <span className="text-lg font-bold text-ink">{value}</span>
+            <span className="text-[11px] text-faint">{label}</span>
           </div>
         ))}
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <div className="flex flex-col items-center rounded-xl bg-[#EEE9FF] px-2 py-3">
-          <span className="text-lg font-bold text-[#6C47FF]">{stats.points}</span>
-          <span className="text-[11px] text-[#6C47FF]/70">Points</span>
+      <div className="mb-4 grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="flex min-w-0 flex-col items-center rounded-xl bg-accent-light px-2 py-3">
+          <span className="text-lg font-bold text-accent">{stats.points}</span>
+          <span className="text-[11px] text-accent/70">Points</span>
         </div>
-        <div className="flex flex-col items-center rounded-xl bg-[#F9FAFB] px-2 py-3">
-          <span className="text-lg font-bold text-[#111827]">
+        <div className="flex min-w-0 flex-col items-center rounded-xl bg-subtle px-2 py-3">
+          <span className="text-lg font-bold text-ink">
             {stats.goals_for}/{stats.goals_against}
           </span>
-          <span className="text-[11px] text-[#9CA3AF]">GF/GA</span>
+          <span className="text-[11px] text-faint">GF/GA</span>
         </div>
-        <div className="flex flex-col items-center rounded-xl bg-[#F9FAFB] px-2 py-3">
+        <div className="flex min-w-0 flex-col items-center rounded-xl bg-subtle px-2 py-3">
           <span
-            className={`text-lg font-bold ${stats.goal_difference >= 0 ? "text-[#059669]" : "text-[#DC2626]"}`}
+            className={`text-lg font-bold ${stats.goal_difference >= 0 ? "text-success" : "text-danger"}`}
           >
             {stats.goal_difference >= 0 ? "+" : ""}
             {stats.goal_difference}
           </span>
-          <span className="text-[11px] text-[#9CA3AF]">GD</span>
+          <span className="text-[11px] text-faint">GD</span>
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-[#E5E7EB] px-3 py-2">
-          <span className="block text-[11px] font-medium text-[#9CA3AF]">Home</span>
-          <span className="text-sm font-semibold text-[#111827]">{stats.home_record}</span>
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="rounded-xl border border-border px-3 py-2">
+          <span className="block text-[11px] font-medium text-faint">Home</span>
+          <span className="text-sm font-semibold text-ink">{stats.home_record}</span>
         </div>
-        <div className="rounded-xl border border-[#E5E7EB] px-3 py-2">
-          <span className="block text-[11px] font-medium text-[#9CA3AF]">Away</span>
-          <span className="text-sm font-semibold text-[#111827]">{stats.away_record}</span>
+        <div className="rounded-xl border border-border px-3 py-2">
+          <span className="block text-[11px] font-medium text-faint">Away</span>
+          <span className="text-sm font-semibold text-ink">{stats.away_record}</span>
         </div>
       </div>
 
       <div>
-        <span className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-[#9CA3AF]">
+        <span className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-faint">
           Form
         </span>
         <div className="flex flex-wrap gap-1.5">
@@ -190,19 +196,20 @@ export function ResultsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* One scrolling row on phones instead of four ragged wrapped lines. */}
+      <div className="scroll-x -mx-4 flex items-center gap-2 px-4 sm:mx-0 sm:flex-wrap sm:px-0">
         {leaguesLoading && (
           <div className="flex gap-2">
             {[1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
-                className="h-8 w-20 animate-pulse rounded-full bg-[#F3F4F6]"
+                className="h-8 w-20 animate-pulse rounded-full bg-hairline"
               />
             ))}
           </div>
         )}
         {leaguesError && (
-          <p className="text-sm text-[#DC2626]">Failed to load leagues.</p>
+          <p className="text-sm text-danger">Failed to load leagues.</p>
         )}
         {leagues?.map((league) => {
           const isActive = league === activeLeague;
@@ -210,10 +217,11 @@ export function ResultsView() {
             <button
               key={league}
               onClick={() => setSelectedLeague(league)}
-              className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors duration-150 ${
+              aria-pressed={isActive}
+              className={`flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[34px] ${
                 isActive
-                  ? "border-[#6C47FF] bg-[#6C47FF] text-white"
-                  : "border-[#E5E7EB] bg-white text-[#6B7280] hover:border-[#6C47FF]/40 hover:text-[#6C47FF]"
+                  ? "border-accent bg-accent text-white"
+                  : "border-border bg-surface text-muted hover:border-accent/40 hover:text-accent"
               }`}
             >
               {league}
@@ -223,18 +231,22 @@ export function ResultsView() {
       </div>
 
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+        <label className="sr-only" htmlFor="team-search">
+          Search team
+        </label>
         <input
-          type="text"
+          id="team-search"
+          type="search"
           placeholder="Search team (e.g. Arsenal)…"
           value={teamSearch}
           onChange={(e) => setTeamSearch(e.target.value)}
-          className="w-full rounded-xl border border-[#E5E7EB] bg-white py-2 pl-9 pr-4 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#6C47FF] focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20"
+          className="min-h-[44px] w-full rounded-xl border border-border bg-surface pl-9 pr-4 text-base text-ink placeholder:text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 sm:min-h-[38px] sm:text-sm"
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-2">
           {matchesLoading && (
             <div className="space-y-2">
               {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -264,7 +276,7 @@ export function ResultsView() {
             matches?.map((match) => <MatchRow key={match.id} match={match} />)}
         </div>
 
-        <div className="lg:sticky lg:top-[88px] lg:self-start">
+        <div className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
           {statsLoading && deferredTeamSearch.length >= 2 && (
             <SpinnerOverlay label={`Loading stats for ${deferredTeamSearch}…`} />
           )}
@@ -279,12 +291,12 @@ export function ResultsView() {
             <TeamStatsPanel stats={teamStats} />
           )}
           {!deferredTeamSearch && (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[#E5E7EB] bg-white px-6 py-12 text-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EEE9FF] text-[#6C47FF]">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-surface px-6 py-12 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-light text-accent">
                 <Trophy className="h-5 w-5" />
               </div>
-              <p className="text-sm font-semibold text-[#111827]">Team Stats</p>
-              <p className="max-w-[200px] text-xs text-[#9CA3AF]">
+              <p className="text-sm font-semibold text-ink">Team Stats</p>
+              <p className="max-w-[200px] text-xs text-faint">
                 Search for a team above to see its stats and form.
               </p>
             </div>

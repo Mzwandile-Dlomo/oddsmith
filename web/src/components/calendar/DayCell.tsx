@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { CalendarDay } from "@/lib/types";
-import { dateFromISO, formatSignedCurrency } from "@/lib/utils";
+import { dateFromISO, formatCompactSigned, formatSignedCurrency } from "@/lib/utils";
 
 /**
  * P&L drives the cell's background so a month reads as a performance heatmap at
@@ -13,9 +13,17 @@ import { dateFromISO, formatSignedCurrency } from "@/lib/utils";
 function pnlTone(day: CalendarDay): string {
   const settled = day.won_count + day.lost_count;
   if (settled === 0) return "";
-  if (day.profit_loss > 0) return "bg-[#D1FAE5]/60";
-  if (day.profit_loss < 0) return "bg-[#FEE2E2]/60";
-  return "bg-[#F3F4F6]";
+  if (day.profit_loss > 0) return "bg-success-soft/60";
+  if (day.profit_loss < 0) return "bg-danger-soft/60";
+  return "bg-hairline";
+}
+
+function pnlText(day: CalendarDay): string {
+  return day.profit_loss > 0
+    ? "text-success"
+    : day.profit_loss < 0
+      ? "text-danger"
+      : "text-muted";
 }
 
 function ConfidenceDot({ day }: { day: CalendarDay }) {
@@ -25,7 +33,7 @@ function ConfidenceDot({ day }: { day: CalendarDay }) {
     return (
       <span
         title="No slip clears the target on this card"
-        className="h-1.5 w-1.5 rounded-full bg-[#E5E7EB]"
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-border"
       />
     );
   }
@@ -35,11 +43,17 @@ function ConfidenceDot({ day }: { day: CalendarDay }) {
   return (
     <span
       title={`Model: ${(combined_model_prob * 100).toFixed(0)}% at ${day.model.combined_odds.toFixed(2)}`}
-      className={`h-1.5 w-1.5 rounded-full ${strong ? "bg-[#059669]" : "bg-[#D97706]"}`}
+      className={`h-1.5 w-1.5 shrink-0 rounded-full ${strong ? "bg-success" : "bg-warn"}`}
     />
   );
 }
 
+/**
+ * A 7-column month can only give a phone ~45px per cell, so the cell sheds
+ * detail as it narrows: the day number and the model dot survive everywhere,
+ * match counts appear from `sm`, league names only from `lg`. Everything the
+ * cell drops is still on the day page a tap away.
+ */
 export function DayCell({
   day,
   inMonth,
@@ -58,18 +72,19 @@ export function DayCell({
   return (
     <Link
       href={`/calendar/${day.date}`}
-      className={`group relative flex min-h-[104px] flex-col gap-1 border-b border-r border-[#E5E7EB] p-2 transition-colors ${
-        inMonth ? pnlTone(day) : "bg-[#FAFAFA]"
-      } ${inMonth ? "hover:bg-[#EEE9FF]/70" : "hover:bg-[#F3F4F6]"}`}
+      aria-label={`${day.date}, ${day.fixture_count} matches`}
+      className={`group relative flex min-h-[62px] flex-col gap-0.5 border-b border-r border-border p-1 transition-colors sm:min-h-[92px] sm:gap-1 sm:p-2 lg:min-h-[112px] ${
+        inMonth ? pnlTone(day) : "bg-canvas"
+      } ${inMonth ? "hover:bg-accent-light/70" : "hover:bg-hairline"}`}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-0.5">
         <span
-          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${
+          className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums sm:text-xs ${
             isToday
-              ? "bg-[#6C47FF] text-white"
+              ? "bg-accent text-white"
               : inMonth
-                ? "text-[#111827]"
-                : "text-[#D1D5DB]"
+                ? "text-ink"
+                : "text-outline"
           }`}
         >
           {dayNumber}
@@ -78,13 +93,13 @@ export function DayCell({
       </div>
 
       {inMonth && hasFixtures && (
-        <span className="text-[11px] font-medium text-[#6B7280]">
+        <span className="hidden text-[11px] font-medium text-muted sm:block">
           {day.fixture_count} {day.fixture_count === 1 ? "match" : "matches"}
         </span>
       )}
 
       {inMonth && day.leagues.length > 0 && (
-        <span className="truncate text-[10px] leading-tight text-[#9CA3AF]">
+        <span className="hidden truncate text-[10px] leading-tight text-faint lg:block">
           {day.leagues.slice(0, 2).join(" · ")}
           {day.leagues.length > 2 && ` +${day.leagues.length - 2}`}
         </span>
@@ -92,22 +107,27 @@ export function DayCell({
 
       <div className="mt-auto flex flex-col gap-0.5">
         {settled > 0 && (
-          <span
-            className={`text-xs font-semibold tabular-nums ${
-              day.profit_loss > 0
-                ? "text-[#059669]"
-                : day.profit_loss < 0
-                  ? "text-[#DC2626]"
-                  : "text-[#6B7280]"
-            }`}
-          >
-            {formatSignedCurrency(day.profit_loss, currency)}
+          <span className={`text-[10px] font-semibold tabular-nums sm:text-xs ${pnlText(day)}`}>
+            {/* The currency prefix will not fit a phone column. */}
+            <span className="sm:hidden">{formatCompactSigned(day.profit_loss)}</span>
+            <span className="hidden sm:inline">
+              {formatSignedCurrency(day.profit_loss, currency)}
+            </span>
           </span>
         )}
         {day.pending_count > 0 && (
-          <span className="text-[10px] font-medium text-[#D97706]">
-            {day.pending_count} open
+          <span className="text-[10px] font-medium leading-none text-warn">
+            <span className="sm:hidden">●{day.pending_count}</span>
+            <span className="hidden sm:inline">{day.pending_count} open</span>
           </span>
+        )}
+        {/* On a phone the match count is dropped above, so a bare dot keeps
+            "this day has a card" visible without costing a line of text. */}
+        {inMonth && hasFixtures && settled === 0 && day.pending_count === 0 && (
+          <span
+            aria-hidden
+            className="h-1 w-1 rounded-full bg-outline sm:hidden"
+          />
         )}
       </div>
     </Link>

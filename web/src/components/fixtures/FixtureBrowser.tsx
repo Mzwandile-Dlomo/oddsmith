@@ -6,6 +6,7 @@ import { fetchFixtures } from "@/lib/api";
 import { addDays, toISODate, groupFixturesByDay } from "@/lib/utils";
 import { SkeletonCard } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FixtureCard } from "./FixtureCard";
 import { CalendarDays } from "lucide-react";
 
@@ -16,10 +17,10 @@ interface FixtureBrowserProps {
   onTimeframeChange: (t: Timeframe) => void;
 }
 
-const TIMEFRAME_OPTIONS: { value: Timeframe; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "3days", label: "Next 3 days" },
-  { value: "7days", label: "Next 7 days" },
+const TIMEFRAME_OPTIONS: { value: Timeframe; label: string; short: string }[] = [
+  { value: "today", label: "Today", short: "Today" },
+  { value: "3days", label: "Next 3 days", short: "3 days" },
+  { value: "7days", label: "Next 7 days", short: "7 days" },
 ];
 
 function getDateRange(tf: Timeframe): { from: string; to: string } {
@@ -47,26 +48,25 @@ export function FixtureBrowser({
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1 rounded-xl border border-[#E5E7EB] bg-white p-1 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
-          {TIMEFRAME_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => onTimeframeChange(opt.value)}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all duration-150 ${
-                timeframe === opt.value
-                  ? "bg-[#6C47FF] text-white shadow-sm"
-                  : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SegmentedControl
+          label="Fixture window"
+          value={timeframe}
+          onChange={onTimeframeChange}
+          segments={TIMEFRAME_OPTIONS.map((opt) => ({
+            value: opt.value,
+            label: (
+              <>
+                <span className="sm:hidden">{opt.short}</span>
+                <span className="hidden sm:inline">{opt.label}</span>
+              </>
+            ),
+          }))}
+        />
 
         {fixtures && fixtures.length > 0 && (
-          <span className="text-xs font-medium text-[#9CA3AF]">
+          <span className="text-xs font-medium text-faint">
             {fixtures.length} {fixtures.length === 1 ? "match" : "matches"}
           </span>
         )}
@@ -81,7 +81,7 @@ export function FixtureBrowser({
       )}
 
       {isError && (
-        <div className="rounded-xl border border-[#FEE2E2] bg-[#FEE2E2]/50 px-4 py-3 text-sm text-[#DC2626]">
+        <div className="rounded-xl border border-danger-line bg-danger-faint px-4 py-3 text-sm text-danger">
           {error instanceof Error ? error.message : "Failed to load fixtures. Is the backend running?"}
         </div>
       )}
@@ -94,20 +94,26 @@ export function FixtureBrowser({
         />
       )}
 
+      {/*
+        The list flows with the page rather than scrolling inside a capped box.
+        The old `calc(100vh - 220px)` container trapped the scroll gesture above
+        the bet slip on mobile, and `100vh` is wrong under iOS Safari's URL bar.
+        Day headers stick to the app chrome instead of to an inner container.
+      */}
       {!isLoading && !isError && grouped.length > 0 && (
-        <div className="relative overflow-y-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)]" style={{ maxHeight: "calc(100vh - 220px)" }}>
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
           {grouped.map((group) => (
             <div key={group.isoDate}>
-              <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-[#F3F4F6] bg-[#FAFAFA]/95 px-4 py-2.5 backdrop-blur-sm">
-                <CalendarDays size={13} className="text-[#6C47FF]" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-[#6B7280]">
+              <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-hairline bg-canvas/95 px-4 py-2.5 backdrop-blur-sm lg:top-0">
+                <CalendarDays size={13} className="shrink-0 text-accent" />
+                <span className="truncate text-xs font-semibold uppercase tracking-widest text-muted">
                   {group.label}
                 </span>
-                <span className="ml-auto text-xs text-[#9CA3AF]">
+                <span className="ml-auto shrink-0 text-xs text-faint">
                   {group.items.length}
                 </span>
               </div>
-              <div className="flex flex-col divide-y divide-[#F3F4F6]">
+              <div className="flex flex-col divide-y divide-hairline">
                 {group.items.map((fixture) => (
                   <FixtureCard key={fixture.id} fixture={fixture} />
                 ))}

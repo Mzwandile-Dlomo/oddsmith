@@ -54,7 +54,7 @@ function deduplicateMarkets(markets: Market[]): DeduplicatedMarket[] {
 function ValueBadge({ edge }: { edge: number }) {
   const pct = Math.round(edge * 100);
   return (
-    <span className="inline-flex items-center rounded-full bg-[#EEE9FF] px-1.5 py-0.5 text-[9px] font-semibold text-[#6C47FF] leading-none">
+    <span className="inline-flex items-center rounded-full bg-accent-light px-1.5 py-0.5 text-[9px] font-semibold text-accent leading-none">
       Value +{pct}%
     </span>
   );
@@ -62,8 +62,8 @@ function ValueBadge({ edge }: { edge: number }) {
 
 function ModelOddsRow({ outcome }: { outcome: ModelOutcome }) {
   return (
-    <span className="flex items-center gap-1 text-[10px] text-[#9CA3AF]">
-      <span className="font-medium text-[#6C47FF]">{formatOdds(outcome.model_odds)}</span>
+    <span className="flex items-center gap-1 text-[10px] text-faint">
+      <span className="font-medium text-accent">{formatOdds(outcome.model_odds)}</span>
       <span>model</span>
       {outcome.is_value && outcome.edge !== null && <ValueBadge edge={outcome.edge} />}
     </span>
@@ -137,7 +137,7 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
 
   if (enriched.length === 0) {
     return (
-      <p className="text-xs italic text-[#9CA3AF]">No markets available</p>
+      <p className="text-xs italic text-faint">No markets available</p>
     );
   }
 
@@ -148,16 +148,26 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
         return (
           <div key={market.type}>
             <div className="mb-2.5 flex items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-faint">
                 {marketLabel(market.type)}
               </p>
               {market.isModelOnly && (
-                <span className="rounded-full bg-[#F3F4F6] px-1.5 py-0.5 text-[9px] font-medium text-[#9CA3AF] uppercase tracking-wide">
+                <span className="rounded-full bg-hairline px-1.5 py-0.5 text-[9px] font-medium text-faint uppercase tracking-wide">
                   Model only
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            {/*
+              `auto-fill` packs as many ~84px tracks as fit, so a 1X2 market
+              still reads as a 3-up row on a 375px phone while the buttons stay
+              a sane size on a wide monitor instead of stretching to thirds.
+            */}
+            <div
+              className="grid gap-2"
+              style={{
+                gridTemplateColumns: "repeat(auto-fill, minmax(min(84px, 100%), 1fr))",
+              }}
+            >
               {market.outcomes.map((outcome) => {
                 const label = outcomeLabel(
                   market.type,
@@ -172,17 +182,17 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
                   return (
                     <div
                       key={outcome.name}
-                      className="flex min-w-[88px] flex-col items-start rounded-xl border border-dashed border-[#D1D5DB] bg-[#FAFAFA] px-3 py-2.5"
+                      className="flex min-h-[64px] min-w-0 flex-col items-start rounded-xl border border-dashed border-outline bg-canvas px-2.5 py-2.5 sm:px-3"
                     >
-                      <span className="text-xs font-medium leading-tight text-[#6B7280]">
+                      <span className="text-xs font-medium leading-tight text-muted">
                         {label}
                       </span>
                       {outcome.modelOutcome && (
                         <div className="mt-1 flex flex-col gap-0.5">
-                          <span className="text-[13px] font-bold tabular-nums text-[#6C47FF]">
+                          <span className="text-[13px] font-bold tabular-nums text-accent">
                             {formatOdds(outcome.modelOutcome.model_odds)}
                           </span>
-                          <span className="text-[9px] text-[#9CA3AF]">model odds</span>
+                          <span className="text-[9px] text-faint">model odds</span>
                           {outcome.modelOutcome.is_value && outcome.modelOutcome.edge !== null && (
                             <ValueBadge edge={outcome.modelOutcome.edge} />
                           )}
@@ -209,22 +219,22 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
                         price: outcome.bestPrice,
                       })
                     }
-                    className={`group flex min-w-[88px] flex-col items-start rounded-xl border px-3 py-2.5 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C47FF]/40 ${
+                    className={`group flex min-h-[64px] min-w-0 flex-col items-start rounded-xl border px-2.5 py-2.5 transition-all duration-150 sm:px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                       isActive
-                        ? "border-[#6C47FF]/40 bg-[#EEE9FF] ring-1 ring-[#6C47FF]/20 shadow-[0_0_0_3px_rgba(108,71,255,0.08)]"
-                        : "border-[#E5E7EB] bg-white hover:border-[#D1D5DB] hover:bg-[#F9FAFB] hover:shadow-[0_1px_4px_rgba(0,0,0,0.06)]"
+                        ? "border-accent/40 bg-accent-light ring-1 ring-accent/20 shadow-glow"
+                        : "border-border bg-surface hover:border-outline hover:bg-subtle hover:shadow-raised"
                     }`}
                   >
                     <span
                       className={`text-xs font-medium leading-tight ${
-                        isActive ? "text-[#6C47FF]" : "text-[#6B7280]"
+                        isActive ? "text-accent" : "text-muted"
                       }`}
                     >
                       {label}
                     </span>
                     <span
                       className={`mt-0.5 text-[13px] font-bold tabular-nums ${
-                        isActive ? "text-[#6C47FF]" : "text-[#111827]"
+                        isActive ? "text-accent" : "text-ink"
                       }`}
                     >
                       {formatOdds(outcome.bestPrice)}

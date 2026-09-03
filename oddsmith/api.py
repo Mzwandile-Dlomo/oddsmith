@@ -44,6 +44,8 @@ from oddsmith.models import Fixture, MarketType
 from oddsmith.providers.api_football import ApiFootballProvider
 from oddsmith.providers.base import OddsProvider
 from oddsmith.cache import find_cached_fixture, get_cached_fixtures, read_cached_fixtures
+from oddsmith.data.schedules import read_scheduled_fixtures
+from oddsmith.data.settlement import team_key
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
 from oddsmith.odds_model.acca import Acca, Candidate, build_acca
 from oddsmith.odds_model.backtest import backtest_1x2
@@ -114,6 +116,33 @@ def _enrich_with_model(fixtures: list[Fixture], service: PoissonModelService) ->
         return
     for fixture in fixtures:
         fixture.model_markets = build_model_markets(fixture, service)
+
+
+def _same_fixture(left: Fixture, right: Fixture) -> bool:
+    """Match schedule and odds rows while tolerating common provider name noise."""
+    left_time = left.kickoff_utc if left.kickoff_utc.tzinfo else left.kickoff_utc.replace(tzinfo=UTC)
+    right_time = right.kickoff_utc if right.kickoff_utc.tzinfo else right.kickoff_utc.replace(tzinfo=UTC)
+    if abs((left_time - right_time).total_seconds()) > 3 * 60 * 60:
+        return False
+
+    def compatible(first: str, second: str) -> bool:
+        first_key, second_key = team_key(first), team_key(second)
+        return first_key == second_key or first_key in second_key or second_key in first_key
+
+    return compatible(left.home_team, right.home_team) and compatible(
+        left.away_team, right.away_team
+    )
+
+
+def _merge_with_schedule(
+    priced: list[Fixture], scheduled: list[Fixture]
+) -> list[Fixture]:
+    """Prefer priced provider rows and fill uncovered matches from the schedule."""
+    merged = list(priced)
+    for fixture in scheduled:
+        if not any(_same_fixture(fixture, existing) for existing in priced):
+            merged.append(fixture)
+    return sorted(merged, key=lambda fixture: fixture.kickoff_utc)
 
 
 # --------------------------------------------------------------------------- #
@@ -220,6 +249,8 @@ async def list_fixtures(
             markets=markets,
             force_refresh=refresh,
         )
+    scheduled = read_scheduled_fixtures(session, date_from=start, date_to=end)
+    fixtures = _merge_with_schedule(fixtures, scheduled)
     if model:
         _enrich_with_model(fixtures, get_model_service(session))
     return fixtures
@@ -1381,10 +1412,10 @@ def calendar(
 ) -> CalendarView:
     """Summarise each day in a window: fixtures, slips settled, and model shape.
 
-    Deliberately cache-only. Unlike ``/fixtures``, this never calls a provider —
+    Deliberately database-only. Unlike ``/fixtures``, this never calls a provider —
     a month view would otherwise fan out into a fetch per uncovered day and
-    exhaust the odds-API quota every time someone paged the calendar. Days that
-    have not been fetched yet simply report zero fixtures.
+    exhaust the odds-API quota every time someone paged the calendar. The
+    full-season schedule fills days that do not have priced fixtures yet.
     """
     if date_to < date_from:
         raise HTTPException(status_code=400, detail="date_to must be after date_from")
@@ -1411,6 +1442,18 @@ def calendar(
         aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=UTC)
         fixtures_by_day.setdefault(aware.astimezone(UTC).date(), []).append(fixture)
 
+    scheduled = read_scheduled_fixtures(
+        session, date_from=window_start, date_to=window_end
+    )
+    scheduled_by_day: dict[date_type, list[Fixture]] = {}
+    for fixture in scheduled:
+        aware = (
+            fixture.kickoff_utc
+            if fixture.kickoff_utc.tzinfo
+            else fixture.kickoff_utc.replace(tzinfo=UTC)
+        )
+        scheduled_by_day.setdefault(aware.astimezone(UTC).date(), []).append(fixture)
+
     slips = list(session.exec(select(Slip).where(Slip.user_id == DEFAULT_USER_ID)))
     slip_legs = {slip.id: _load_legs(session, slip.id or 0) for slip in slips}
     slips_by_day: dict[date_type, list[Slip]] = {}
@@ -1425,7 +1468,10 @@ def calendar(
     days: list[CalendarDayView] = []
     cursor = date_from
     while cursor <= date_to:
-        day_fixtures = fixtures_by_day.get(cursor, [])
+        priced_fixtures = fixtures_by_day.get(cursor, [])
+        day_fixtures = _merge_with_schedule(
+            priced_fixtures, scheduled_by_day.get(cursor, [])
+        )
         day_slips = slips_by_day.get(cursor, [])
 
         staked = sum(s.stake for s in day_slips)
@@ -1436,9 +1482,9 @@ def calendar(
             pnl += profit_loss(slip.stake, _leg_inputs(slip_legs.get(slip.id, [])))
 
         model_view: CalendarDayModelView | None = None
-        if include_model and model_trained and day_fixtures:
-            _enrich_with_model(day_fixtures, service)
-            candidates = _collect_candidates(day_fixtures)
+        if include_model and model_trained and priced_fixtures:
+            _enrich_with_model(priced_fixtures, service)
+            candidates = _collect_candidates(priced_fixtures)
             acca = build_target_acca(
                 candidates,
                 target_odds=target_odds,
