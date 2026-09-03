@@ -142,115 +142,123 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {enriched.map((market) => {
-        const activeSelection = getSelection(fixture.id, market.type);
-        return (
-          <div key={market.type}>
-            <div className="mb-2.5 flex items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-faint">
-                {marketLabel(market.type)}
-              </p>
-              {market.isModelOnly && (
-                <span className="rounded-full bg-hairline px-1.5 py-0.5 text-[9px] font-medium text-faint uppercase tracking-wide">
-                  Model only
-                </span>
-              )}
-            </div>
-            {/*
-              `auto-fill` packs as many ~84px tracks as fit, so a 1X2 market
-              still reads as a 3-up row on a 375px phone while the buttons stay
-              a sane size on a wide monitor instead of stretching to thirds.
-            */}
-            <div
-              className="grid gap-2"
-              style={{
-                gridTemplateColumns: "repeat(auto-fill, minmax(min(84px, 100%), 1fr))",
-              }}
-            >
-              {market.outcomes.map((outcome) => {
-                const label = outcomeLabel(
-                  market.type,
-                  outcome.name,
-                  outcome.point,
-                  fixture.home_team,
-                  fixture.away_team
-                );
-                const isActive = activeSelection === outcome.name;
+    /*
+      A container query, not a breakpoint: this panel is full-width on a
+      calendar day but sits in the narrower fixtures column on /build, so the
+      markets have to lay themselves out from their own width.
+    */
+    <div className="@container">
+      <div className="grid gap-x-5 gap-y-4 @2xl:grid-cols-2 @4xl:grid-cols-3">
+        {enriched.map((market) => {
+          const activeSelection = getSelection(fixture.id, market.type);
+          return (
+            <div key={market.type} className="min-w-0">
+              <div className="mb-2.5 flex items-center gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-faint">
+                  {marketLabel(market.type)}
+                </p>
+                {market.isModelOnly && (
+                  <span className="rounded-full bg-hairline px-1.5 py-0.5 text-[9px] font-medium text-faint uppercase tracking-wide">
+                    Model only
+                  </span>
+                )}
+              </div>
+              {/*
+                One track per outcome so the row fills its column — a 1X2 reads
+                3-up, a two-way market 2-up. Capped at 3 so a market with more
+                legs wraps instead of shrinking the buttons past legibility; the
+                column itself is already narrow enough to keep them in scale.
+              */}
+              <div
+                className="grid gap-2"
+                style={{
+                  gridTemplateColumns: `repeat(${Math.min(market.outcomes.length, 3)}, minmax(0, 1fr))`,
+                }}
+              >
+                {market.outcomes.map((outcome) => {
+                  const label = outcomeLabel(
+                    market.type,
+                    outcome.name,
+                    outcome.point,
+                    fixture.home_team,
+                    fixture.away_team
+                  );
+                  const isActive = activeSelection === outcome.name;
 
-                if (market.isModelOnly) {
+                  if (market.isModelOnly) {
+                    return (
+                      <div
+                        key={outcome.name}
+                        className="flex min-h-[64px] min-w-0 flex-col items-start rounded-xl border border-dashed border-outline bg-canvas px-2.5 py-2.5 sm:px-3"
+                      >
+                        <span className="text-xs font-medium leading-tight text-muted">
+                          {label}
+                        </span>
+                        {outcome.modelOutcome && (
+                          <div className="mt-1 flex flex-col gap-0.5">
+                            <span className="text-[13px] font-bold tabular-nums text-accent">
+                              {formatOdds(outcome.modelOutcome.model_odds)}
+                            </span>
+                            <span className="text-[9px] text-faint">model odds</span>
+                            {outcome.modelOutcome.is_value && outcome.modelOutcome.edge !== null && (
+                              <ValueBadge edge={outcome.modelOutcome.edge} />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div
+                    <button
                       key={outcome.name}
-                      className="flex min-h-[64px] min-w-0 flex-col items-start rounded-xl border border-dashed border-outline bg-canvas px-2.5 py-2.5 sm:px-3"
+                      onClick={() =>
+                        addLeg({
+                          fixture_id: fixture.id,
+                          home_team: fixture.home_team,
+                          away_team: fixture.away_team,
+                          kickoff_utc: fixture.kickoff_utc,
+                          league: fixture.league,
+                          provider: fixture.provider,
+                          market_type: market.type,
+                          selection: outcome.name,
+                          point: outcome.point,
+                          price: outcome.bestPrice,
+                        })
+                      }
+                      className={`group flex min-h-[64px] min-w-0 flex-col items-start rounded-xl border px-2.5 py-2.5 transition-all duration-150 sm:px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                        isActive
+                          ? "border-accent/40 bg-accent-light ring-1 ring-accent/20 shadow-glow"
+                          : "border-border bg-surface hover:border-outline hover:bg-subtle hover:shadow-raised"
+                      }`}
                     >
-                      <span className="text-xs font-medium leading-tight text-muted">
+                      <span
+                        className={`text-xs font-medium leading-tight ${
+                          isActive ? "text-accent" : "text-muted"
+                        }`}
+                      >
                         {label}
                       </span>
+                      <span
+                        className={`mt-0.5 text-[13px] font-bold tabular-nums ${
+                          isActive ? "text-accent" : "text-ink"
+                        }`}
+                      >
+                        {formatOdds(outcome.bestPrice)}
+                      </span>
                       {outcome.modelOutcome && (
-                        <div className="mt-1 flex flex-col gap-0.5">
-                          <span className="text-[13px] font-bold tabular-nums text-accent">
-                            {formatOdds(outcome.modelOutcome.model_odds)}
-                          </span>
-                          <span className="text-[9px] text-faint">model odds</span>
-                          {outcome.modelOutcome.is_value && outcome.modelOutcome.edge !== null && (
-                            <ValueBadge edge={outcome.modelOutcome.edge} />
-                          )}
+                        <div className="mt-1">
+                          <ModelOddsRow outcome={outcome.modelOutcome} />
                         </div>
                       )}
-                    </div>
+                    </button>
                   );
-                }
-
-                return (
-                  <button
-                    key={outcome.name}
-                    onClick={() =>
-                      addLeg({
-                        fixture_id: fixture.id,
-                        home_team: fixture.home_team,
-                        away_team: fixture.away_team,
-                        kickoff_utc: fixture.kickoff_utc,
-                        league: fixture.league,
-                        provider: fixture.provider,
-                        market_type: market.type,
-                        selection: outcome.name,
-                        point: outcome.point,
-                        price: outcome.bestPrice,
-                      })
-                    }
-                    className={`group flex min-h-[64px] min-w-0 flex-col items-start rounded-xl border px-2.5 py-2.5 transition-all duration-150 sm:px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-                      isActive
-                        ? "border-accent/40 bg-accent-light ring-1 ring-accent/20 shadow-glow"
-                        : "border-border bg-surface hover:border-outline hover:bg-subtle hover:shadow-raised"
-                    }`}
-                  >
-                    <span
-                      className={`text-xs font-medium leading-tight ${
-                        isActive ? "text-accent" : "text-muted"
-                      }`}
-                    >
-                      {label}
-                    </span>
-                    <span
-                      className={`mt-0.5 text-[13px] font-bold tabular-nums ${
-                        isActive ? "text-accent" : "text-ink"
-                      }`}
-                    >
-                      {formatOdds(outcome.bestPrice)}
-                    </span>
-                    {outcome.modelOutcome && (
-                      <div className="mt-1">
-                        <ModelOddsRow outcome={outcome.modelOutcome} />
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+                })}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
