@@ -495,6 +495,7 @@ class DailyAccaView(BaseModel):
     execution_mode: str
     validation_model: str | None
     validation_status: str
+    auto_tracked: bool = False
     staking: StakingView
     note: str
 
@@ -607,6 +608,7 @@ async def daily_acca(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     markets: list[MarketType] | None = Query(default=None),
+    auto_track: bool = Query(default=False),
     providers: list[OddsProvider] = Depends(get_providers),
     session: Session = Depends(get_session),
 ) -> DailyAccaView:
@@ -686,7 +688,7 @@ async def daily_acca(
 
     fixtures_by_id = {f.id: f for f in fixtures}
     view = _acca_to_view(acca, fixtures_by_id)
-    return DailyAccaView(
+    daily_view = DailyAccaView(
         legs=view.legs,
         combined_odds=view.combined_odds,
         combined_model_prob=view.combined_model_prob,
@@ -717,6 +719,86 @@ async def daily_acca(
         ),
         note=_daily_note(acca, model_trained=service.is_trained(), fixtures=len(fixtures)),
     )
+    # The Today page requests this only for the untouched 1.50 daily strategy.
+    # Its first valid prediction becomes an immutable paper observation; later
+    # page loads retain that original price rather than replacing it with hindsight.
+    if auto_track and _is_canonical_daily_request(
+        target_odds=target_odds,
+        max_legs=max_legs,
+        min_leg_prob=min_leg_prob,
+        require_value=require_value,
+        max_edge=max_edge,
+        markets=requested_markets,
+    ):
+        daily_view.auto_tracked = _archive_daily_paper_prediction(
+            session, daily_view, prediction_day=start.date()
+        )
+    return daily_view
+
+
+def _is_canonical_daily_request(
+    *,
+    target_odds: float,
+    max_legs: int,
+    min_leg_prob: float,
+    require_value: bool,
+    max_edge: float,
+    markets: set[MarketType],
+) -> bool:
+    return (
+        target_odds == 1.5
+        and max_legs == 4
+        and min_leg_prob == 0.55
+        and require_value
+        and max_edge == MAX_PLAUSIBLE_EDGE
+        and markets == {MarketType.MATCH_WINNER, MarketType.OVER_UNDER, MarketType.BTTS}
+    )
+
+
+def _archive_daily_paper_prediction(
+    session: Session, view: DailyAccaView, *, prediction_day: date_type
+) -> bool:
+    """Persist the first valid canonical daily prediction, once per UTC day."""
+    if not view.legs or any(leg.kickoff_utc is None for leg in view.legs):
+        return False
+    name = f"Paper daily 1.50 · {prediction_day.isoformat()}"
+    existing = session.exec(
+        select(Slip).where(Slip.user_id == DEFAULT_USER_ID, Slip.name == name)
+    ).first()
+    if existing is not None:
+        return True
+
+    settings = get_settings()
+    slip = Slip(
+        user_id=DEFAULT_USER_ID,
+        name=name,
+        stake=0.0,
+        currency=settings.default_currency,
+        result=SlipResult.PENDING,
+    )
+    session.add(slip)
+    session.commit()
+    session.refresh(slip)
+    session.add_all(
+        [
+            SlipLeg(
+                slip_id=slip.id,
+                fixture_id=leg.fixture_id,
+                home_team=leg.home_team,
+                away_team=leg.away_team,
+                kickoff_utc=leg.kickoff_utc,
+                league=leg.league,
+                provider=leg.provider,
+                market_type=leg.market_type,
+                selection=leg.selection,
+                point=leg.point,
+                price=leg.offered_odds,
+            )
+            for leg in view.legs
+        ]
+    )
+    session.commit()
+    return True
 
 
 def _model_validation_gate(session: Session) -> tuple[bool, str | None, str]:

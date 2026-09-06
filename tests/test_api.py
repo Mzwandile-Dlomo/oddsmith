@@ -497,6 +497,52 @@ def test_daily_acca_accepts_market_filters(client):
     assert body["markets_used"] == ["btts", "match_winner"]
 
 
+def test_daily_acca_auto_archives_one_canonical_paper_prediction_per_day(
+    client, monkeypatch
+):
+    """The first displayed 1.50 ticket is kept; refreshes cannot duplicate it."""
+    pick = api_module.ValuePick(
+        selection="Home",
+        offered_odds=1.66,
+        model_prob=0.63,
+        implied_prob=0.60,
+        edge=0.03,
+        expected_value=0.0458,
+    )
+    monkeypatch.setattr(
+        api_module,
+        "_collect_candidates",
+        lambda *_args, **_kwargs: [
+            api_module.Candidate(
+                fixture_id="stub:1",
+                home_team="Arsenal",
+                away_team="Chelsea",
+                market_type="match_winner",
+                pick=pick,
+            )
+        ],
+    )
+    params = {
+        "date_from": "2026-07-22T00:00:00Z",
+        "date_to": "2026-07-22T23:59:59Z",
+        "auto_track": "true",
+    }
+
+    first = client.get("/acca/daily", params=params).json()
+    second = client.get("/acca/daily", params=params).json()
+
+    assert first["auto_tracked"] is True
+    assert second["auto_tracked"] is True
+    archived = [
+        slip
+        for slip in client.get("/slips").json()
+        if slip["name"] == "Paper daily 1.50 · 2026-07-22"
+    ]
+    assert len(archived) == 1
+    assert archived[0]["stake"] == 0.0
+    assert archived[0]["legs"][0]["price"] == 1.66
+
+
 def test_daily_acca_rejects_unmodelled_market(client):
     response = client.get("/acca/daily", params={"markets": "double_chance"})
 

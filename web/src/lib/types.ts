@@ -261,6 +261,7 @@ export interface DailyAccaView {
   execution_mode: "paper" | "live";
   validation_model: string | null;
   validation_status: string;
+  auto_tracked: boolean;
   staking: StakingView;
   note: string;
 }

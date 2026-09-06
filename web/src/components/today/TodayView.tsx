@@ -156,7 +156,7 @@ export function TodayView() {
 
       <section className="flex flex-col gap-3">
         <SectionHeading title="Today's slip" />
-        <DailyAcca date={today} autoLoad />
+        <DailyAcca date={today} autoLoad autoTrack />
       </section>
 
       {todaySlips.length > 0 && (

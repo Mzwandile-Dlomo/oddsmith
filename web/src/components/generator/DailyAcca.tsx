@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import {
   AlertTriangle,
   CalendarDays,
@@ -298,10 +299,24 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
         <div className="flex min-w-0 flex-col gap-4">
           <StakingPanel data={data} />
 
-          {savedOk ? (
-            <div className="flex items-center gap-2 rounded-xl border border-success-soft bg-success-faint px-4 py-3">
-              <CheckCircle className="h-4 w-4 shrink-0 text-success" />
-              <p className="text-sm font-medium text-success-deeper">Saved to My Slips</p>
+          {savedOk || data.auto_tracked ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success-soft bg-success-faint px-4 py-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 shrink-0 text-success" />
+                <p className="text-sm font-medium text-success-deeper">
+                  {data.auto_tracked
+                    ? "Automatically recorded for outcome tracking"
+                    : "Saved for outcome tracking"}
+                </p>
+              </div>
+              {data.legs[0]?.kickoff_utc && (
+                <Link
+                  href={`/calendar/${data.legs[0].kickoff_utc.slice(0, 10)}`}
+                  className="text-xs font-semibold text-success-deeper underline decoration-success/40 underline-offset-2 hover:decoration-success"
+                >
+                  Mark the result
+                </Link>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -339,9 +354,15 @@ interface DailyAccaProps {
   date?: string;
   /** Build immediately instead of waiting for the Generate click. */
   autoLoad?: boolean;
+  /** Archive the untouched 1.50 daily prediction as a paper ticket. */
+  autoTrack?: boolean;
 }
 
-export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
+export function DailyAcca({
+  date,
+  autoLoad = false,
+  autoTrack = false,
+}: DailyAccaProps = {}) {
   const [targetOdds, setTargetOdds] = useState<number>(1.5);
   const [bankroll, setBankroll] = useState<number>(100);
   const [markets, setMarkets] = useState<MarketType[]>(MARKET_OPTIONS.map((m) => m.type));
@@ -352,7 +373,7 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
   const queryClient = useQueryClient();
 
   const dailyQuery = useQuery<DailyAccaView>({
-    queryKey: ["daily-acca", date ?? "next24h", targetOdds, bankroll, markets],
+    queryKey: ["daily-acca", date ?? "next24h", targetOdds, bankroll, markets, autoTrack],
     queryFn: () =>
       fetchDailyAcca({
         targetOdds,
@@ -361,10 +382,17 @@ export function DailyAcca({ date, autoLoad = false }: DailyAccaProps = {}) {
         horizonBets: HORIZON_DAYS,
         markets,
         date,
+        autoTrack,
       }),
     enabled,
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    if (!dailyQuery.data?.auto_tracked) return;
+    queryClient.invalidateQueries({ queryKey: ["slips"] });
+    queryClient.invalidateQueries({ queryKey: ["calendar"] });
+  }, [dailyQuery.data?.auto_tracked, queryClient]);
 
   const saveMutation = useMutation({
     mutationFn: createSlip,

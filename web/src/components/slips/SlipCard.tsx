@@ -43,6 +43,13 @@ export function SlipCard({ slip }: SlipCardProps) {
     onSuccess: () => {
       setSettleError(null);
       queryClient.invalidateQueries({ queryKey: ["slips"] });
+      // The month and day views derive their win/loss markers from `/calendar`,
+      // not the locally cached slip. Refresh it as soon as an outcome is
+      // recorded so a settled paper ticket immediately marks its match day.
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      // A settled generated paper ticket also contributes to the evidence shown
+      // in Model Lab's paper-performance panel.
+      queryClient.invalidateQueries({ queryKey: ["paper-performance"] });
     },
     onError: (err) => {
       setSettleError(err instanceof Error ? err.message : "Settle failed");

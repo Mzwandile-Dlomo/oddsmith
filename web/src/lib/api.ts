@@ -110,6 +110,8 @@ export interface DailyAccaParams {
   bankroll: number;
   horizonBets: number;
   markets: MarketType[];
+  /** Archive the untouched canonical 1.50 prediction once for the day. */
+  autoTrack?: boolean;
   /** ISO date (YYYY-MM-DD). Omit for "from now"; set to scope the slip to one day. */
   date?: string;
 }
@@ -121,6 +123,7 @@ export async function fetchDailyAcca({
   horizonBets,
   markets,
   date,
+  autoTrack = false,
 }: DailyAccaParams): Promise<DailyAccaView> {
   const params = new URLSearchParams({
     target_odds: String(targetOdds),
@@ -132,6 +135,7 @@ export async function fetchDailyAcca({
     params.set("date_from", `${date}T00:00:00Z`);
     params.set("date_to", `${date}T23:59:59Z`);
   }
+  if (autoTrack) params.set("auto_track", "true");
   markets.forEach((market) => params.append("markets", market));
   return request<DailyAccaView>(`/acca/daily?${params.toString()}`);
 }
