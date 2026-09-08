@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, CalendarDays } from "lucide-react";
+import { AlertCircle, ArrowRight, CalendarDays, Radio, ScanLine, TrendingUp } from "lucide-react";
 import { fetchCalendar, fetchSlips } from "@/lib/api";
 import type { CalendarDay, SlipView } from "@/lib/types";
 import {
@@ -93,16 +93,24 @@ export function TodayView() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-surface px-5 py-6 shadow-panel sm:px-8 sm:py-8">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full border-[36px] border-accent/10" />
+        <div className="relative flex flex-wrap items-end justify-between gap-6">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight text-ink sm:text-xl">
+          <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">
+            <Radio size={12} className="animate-pulse" /> Live market board
+          </div>
+          <h1 className="max-w-xl text-3xl font-semibold leading-[1.05] tracking-[-0.04em] text-ink sm:text-5xl">
+            Find the price<br className="hidden sm:block" /> worth taking.
+          </h1>
+          <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">
             {dateFromISO(today).toLocaleDateString(undefined, {
               weekday: "long",
               month: "long",
               day: "numeric",
             })}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
+          </p>
+          <p className="max-w-md text-sm leading-relaxed text-muted">
             {todayCard
               ? `${todayCard.fixture_count} ${todayCard.fixture_count === 1 ? "match" : "matches"} across ${todayCard.leagues.length} ${todayCard.leagues.length === 1 ? "league" : "leagues"}.`
               : "Today's card."}
@@ -110,8 +118,8 @@ export function TodayView() {
         </div>
         {settledToday.length > 0 && (
           <div className="shrink-0 sm:text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-faint">
-              Today
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-faint">
+              Session P&amp;L
             </p>
             <p
               className={`text-lg font-semibold tabular-nums ${
@@ -126,6 +134,12 @@ export function TodayView() {
             </p>
           </div>
         )}
+        </div>
+        <div className="relative mt-7 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-border bg-border">
+          <div className="bg-canvas/70 px-3 py-3 sm:px-4"><p className="text-[10px] uppercase tracking-widest text-faint">Fixtures</p><p className="mt-1 text-xl font-semibold tabular-nums text-ink">{todayCard?.fixture_count ?? 0}</p></div>
+          <div className="bg-canvas/70 px-3 py-3 sm:px-4"><p className="text-[10px] uppercase tracking-widest text-faint">Leagues</p><p className="mt-1 text-xl font-semibold tabular-nums text-ink">{todayCard?.leagues.length ?? 0}</p></div>
+          <div className="bg-canvas/70 px-3 py-3 sm:px-4"><p className="text-[10px] uppercase tracking-widest text-faint">Signal</p><p className="mt-1 flex items-center gap-1 text-xl font-semibold text-accent"><TrendingUp size={17} /> scan</p></div>
+        </div>
       </div>
 
       {toSettle.length > 0 && (
@@ -155,7 +169,10 @@ export function TodayView() {
       )}
 
       <section className="flex flex-col gap-3">
-        <SectionHeading title="Today's slip" />
+        <div className="flex items-end justify-between gap-3">
+          <div><p className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-accent"><ScanLine size={12} /> Model output</p><SectionHeading title="Today's slip" /></div>
+          <span className="hidden text-xs text-faint sm:block">Probability first. Price second.</span>
+        </div>
         <DailyAcca date={today} autoLoad autoTrack />
       </section>
 

@@ -3,69 +3,65 @@
 @theme {
   --font-sans: var(--font-geist);
 
-  /* Brand */
-  --color-accent:        #6C47FF;
-  --color-accent-hover:  #5A38E8;
-  --color-accent-light:  #EEE9FF;
-  --color-accent-ring:   #6C47FF40;
+  --color-accent:        #d8ff45;
+  --color-accent-hover:  #c4ec32;
+  --color-accent-light:  #29331b;
+  --color-accent-ring:   #d8ff4540;
 
-  /* Surfaces — canvas sits behind, surface is every card and panel. */
-  --color-canvas:        #FAFAFA;
-  --color-surface:       #FFFFFF;
-  --color-subtle:        #F9FAFB;
-  --color-hairline:      #F3F4F6;
-  --color-border:        #E5E7EB;
-  --color-outline:       #D1D5DB;
+  --color-canvas:        #0d1210;
+  --color-surface:       #151c18;
+  --color-subtle:        #1b251f;
+  --color-hairline:      #202b24;
+  --color-border:        #2b382f;
+  --color-outline:       #435347;
 
-  /* Text — ink reads as a heading, muted as a label, faint as metadata. */
-  --color-ink:           #111827;
-  --color-ink-soft:      #374151;
-  --color-muted-strong:  #4B5563;
-  --color-muted:         #6B7280;
-  --color-faint:         #9CA3AF;
+  --color-ink:           #f3f7ed;
+  --color-ink-soft:      #c7d1c4;
+  --color-muted-strong:  #a0aca1;
+  --color-muted:         #839085;
+  --color-faint:         #5f6e62;
 
   /* Status. Each ramp runs faint (wash) → line (border) → soft (fill) →
      base (text on soft) → deep (text on faint). */
   --color-success:        #059669;
   --color-success-bright: #10B981;
   --color-success-faint:  #ECFDF5;
-  --color-success-line:   #A7F3D0;
-  --color-success-soft:   #D1FAE5;
-  --color-success-deep:   #047857;
-  --color-success-deeper: #065F46;
+  --color-success:        #8de56b;
+  --color-success-bright: #a7f47f;
+  --color-success-faint:  #14271b;
+  --color-success-line:   #315b38;
+  --color-success-soft:   #24472b;
+  --color-success-deep:   #a7f47f;
+  --color-success-deeper: #c0ff9e;
 
-  --color-danger:        #DC2626;
-  --color-danger-faint:  #FEF2F2;
-  --color-danger-line:   #FECACA;
-  --color-danger-soft:   #FEE2E2;
-  --color-danger-deep:   #B91C1C;
+  --color-danger:        #ff796f;
+  --color-danger-faint:  #311b1b;
+  --color-danger-line:   #683333;
+  --color-danger-soft:   #4a2525;
+  --color-danger-deep:   #ff9a92;
 
-  --color-warn:          #D97706;
-  --color-warn-faint:    #FFFBEB;
-  --color-warn-line:     #FDE68A;
-  --color-warn-soft:     #FEF3C7;
-  --color-warn-mid:      #B45309;
-  --color-warn-strong:   #92400E;
-  --color-warn-deep:     #78350F;
+  --color-warn:          #f6bd62;
+  --color-warn-line:     #67512d;
+  --color-warn-soft:     #3a2f1d;
+  --color-warn-mid:      #d99b45;
+  --color-warn-strong:   #ffd58d;
+  --color-warn-deep:     #f5ca85;
 
-  /* Violet tints beyond the accent, and the indigo used for model callouts. */
-  --color-accent-faint:  #F5F3FF;
-  --color-accent-line:   #DDD6FE;
-  --color-accent-mid:    #C4B5FD;
+  --color-accent-faint:  #202b17;
+  --color-accent-line:   #566c27;
+  --color-accent-mid:    #9dbb3c;
 
-  --color-info:          #4338CA;
-  --color-info-faint:    #EEF2FF;
-  --color-info-line:     #C7D2FE;
+  --color-info:          #8bd6dd;
+  --color-info-faint:    #172a2c;
+  --color-info-line:     #31565a;
 
-  --shadow-subtle:   0 1px 3px rgba(0,0,0,0.04);
-  --shadow-card:     0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-raised:   0 1px 4px rgba(0,0,0,0.06);
-  --shadow-glow:     0 0 0 3px rgba(108,71,255,0.08);
-  --shadow-panel:    0 4px 16px rgba(0,0,0,0.08);
-  --shadow-elevated: 0 8px 32px rgba(0,0,0,0.10);
-  --shadow-sheet:    0 -8px 32px rgba(0,0,0,0.12);
-
-  /* Shell metrics, shared by the fixed chrome and the padding that clears it. */
+  --shadow-subtle:   0 1px 3px rgba(0,0,0,0.18);
+  --shadow-card:     0 12px 30px rgba(0,0,0,0.18);
+  --shadow-raised:   0 14px 35px rgba(0,0,0,0.24);
+  --shadow-glow:     0 0 0 3px rgba(216,255,69,0.12);
+  --shadow-panel:    0 20px 50px rgba(0,0,0,0.28);
+  --shadow-elevated: 0 24px 70px rgba(0,0,0,0.32);
+  --shadow-sheet:    0 -12px 45px rgba(0,0,0,0.35);
   --spacing-sidebar: 15rem;
   --spacing-tabbar:  3.5rem;
   --spacing-topbar:  3.5rem;
@@ -86,11 +82,18 @@ html {
 
 body {
   background-color: var(--color-canvas);
+  background-image: radial-gradient(circle at 80% -10%, rgba(216,255,69,0.08), transparent 30rem), linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: auto, 48px 48px, 48px 48px;
   color: var(--color-ink);
-  font-family: var(--font-geist), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-geist), "Avenir Next", ui-sans-serif, sans-serif;
   /* Nothing in this app is a horizontal-scrolling page; wide content scrolls
      inside its own container instead. */
   overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #10150e;
 }
 
 /* Numeric columns stay aligned when values change under them. */

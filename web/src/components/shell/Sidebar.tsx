@@ -48,7 +48,7 @@ function Wordmark({ size = "md" }: { size?: "sm" | "md" }) {
   const glyph = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
   return (
     <span className="flex items-center gap-2.5">
-      <span className={`flex ${box} items-center justify-center rounded-lg bg-accent`}>
+      <span className={`flex ${box} items-center justify-center rounded-md border border-accent/30 bg-accent shadow-[0_0_22px_rgba(216,255,69,0.18)]`}>
         <svg viewBox="0 0 24 24" className={glyph} aria-hidden="true" fill="none">
           <path
             d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9z"
@@ -58,14 +58,14 @@ function Wordmark({ size = "md" }: { size?: "sm" | "md" }) {
           <circle cx="12" cy="12" r="5" fill="white" />
           <path
             d="M9.5 12l1.5 1.5 3.5-3.5"
-            stroke="#6C47FF"
+            stroke="#18210f"
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
       </span>
-      <span className="text-[15px] font-semibold tracking-tight text-ink">Oddsmith</span>
+      <span className="text-[15px] font-semibold tracking-tight text-ink">Oddsmith<span className="text-accent">/</span></span>
     </span>
   );
 }
@@ -99,7 +99,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       aria-current={active ? "page" : undefined}
       className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
         active
-          ? "bg-accent-light text-accent"
+          ? "bg-accent-light text-accent shadow-[inset_3px_0_0_#d8ff45]"
           : "text-muted hover:bg-hairline hover:text-ink"
       }`}
     >
@@ -148,8 +148,8 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border bg-surface lg:flex">
-      <div className="flex h-16 shrink-0 items-center border-b border-border px-5">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border bg-surface/90 backdrop-blur-xl lg:flex">
+      <div className="flex h-20 shrink-0 items-center border-b border-border px-5">
         <Wordmark />
       </div>
 
@@ -158,7 +158,7 @@ export function Sidebar() {
           <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
         ))}
 
-        <p className="mt-5 mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-faint">
+        <p className="mt-7 mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-faint">
           Tools
         </p>
         {SECONDARY.map((item) => (
@@ -181,7 +181,7 @@ export function MobileTopBar() {
   const bankroll = useBankroll();
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-surface/90 px-4 backdrop-blur-md lg:hidden">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-canvas/85 px-4 backdrop-blur-md lg:hidden">
       <Wordmark size="sm" />
       {bankroll && bankroll.settledCount > 0 && (
         <span className="flex items-baseline gap-1.5 rounded-full border border-border bg-canvas px-2.5 py-1">
