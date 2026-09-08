@@ -2,6 +2,9 @@
 
 Run this on a schedule (for example every six hours). Provider calls may consume
 paid quota, so the default uses only The Odds API and limits the date window.
+Corner totals are supported as collection-only research data: they use the
+provider's explicitly budgeted per-event endpoint and never enter the model or
+ticket generator.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from sqlmodel import Session, select
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from oddsmith.cache import get_cached_fixtures
+from oddsmith.data.odds_snapshots import capture_odds_snapshots
 from oddsmith.db import OddsSnapshot, get_engine, init_db
 from oddsmith.models import MarketType
 from oddsmith.providers.api_football import ApiFootballProvider
@@ -37,8 +41,21 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--markets",
         nargs="+",
-        choices=("match_winner", "over_under", "btts"),
+        choices=("match_winner", "over_under", "btts", "corner_totals"),
         default=("match_winner", "over_under"),
+    )
+    parser.add_argument(
+        "--max-additional-events",
+        type=int,
+        default=5,
+        choices=range(1, 41),
+        help="maximum events for BTTS/corner per-event price collection",
+    )
+    parser.add_argument(
+        "--max-additional-credits",
+        type=int,
+        default=10,
+        help="hard credit ceiling for BTTS/corner per-event price collection",
     )
     return parser
 
@@ -62,20 +79,40 @@ async def _run() -> int:
     now = datetime.now(UTC)
     end = now + timedelta(days=args.days)
     markets = [MarketType(value) for value in args.markets]
-    if args.provider == "the_odds_api" and MarketType.BTTS in markets:
+    additional_markets = [
+        market
+        for market in markets
+        if market in {MarketType.BTTS, MarketType.CORNER_TOTALS}
+    ]
+    bulk_markets = [market for market in markets if market not in additional_markets]
+    if additional_markets and args.provider != "the_odds_api":
         raise SystemExit(
-            "BTTS is not a bulk The Odds API market; use collect_additional_odds.py"
+            "BTTS and corner totals are collected through The Odds API's "
+            "budgeted per-event endpoint; use --provider the_odds_api"
         )
     with Session(get_engine()) as session:
         before = _snapshot_count(session)
-        fixtures = await get_cached_fixtures(
-            session,
-            _providers(args.provider),
-            date_from=now,
-            date_to=end,
-            markets=markets,
-            force_refresh=True,
-        )
+        fixtures = []
+        if bulk_markets:
+            fixtures = await get_cached_fixtures(
+                session,
+                _providers(args.provider),
+                date_from=now,
+                date_to=end,
+                markets=bulk_markets,
+                force_refresh=True,
+            )
+        if additional_markets:
+            result = await TheOddsApiProvider().collect_additional_markets(
+                date_from=now,
+                date_to=end,
+                markets=additional_markets,
+                max_events=args.max_additional_events,
+                max_credits=args.max_additional_credits,
+            )
+            capture_odds_snapshots(session, result.fixtures, captured_at=now)
+            session.commit()
+            fixtures.extend(result.fixtures)
         after = _snapshot_count(session)
     print(
         f"Captured {after - before} new price outcomes across {len(fixtures)} fixtures "

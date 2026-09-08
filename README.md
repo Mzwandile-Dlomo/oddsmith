@@ -21,9 +21,11 @@ when the data does not support one.
 - Saved slips, settlement, profit/loss, historical results, and backtesting.
 - Provider caching to protect paid API quotas.
 
-Corners are intentionally not modelled yet. They require historical team-level
-corner counts, a separately calibrated model, and a walk-forward backtest. Odds
-alone are not enough to produce a trustworthy corner prediction.
+Corners are intentionally not modelled or offered in generated tickets yet.
+Oddsmith does collect a small, credit-capped sample of pre-match corner-total
+prices so the market can later be evaluated honestly. They require historical
+team-level corner counts, a separately calibrated model, and a walk-forward
+backtest; odds alone are not enough to produce a trustworthy prediction.
 
 ## Build and synchronize the match dataset
 
@@ -56,6 +58,17 @@ free plan does not expose 2026/27. Synchronize all five leagues with:
 uv run --active python scripts/sync_fixtures.py --season 2026 --write
 # or
 make sync-fixtures
+```
+
+## Corner-price research collection
+
+The six-hourly sync collects up to five corner-total events (at most ten The
+Odds API credits per run) as append-only research snapshots. This does not turn
+on corners in the prediction model or ticket generator. To run the same
+collection locally:
+
+```bash
+make collect-corners
 ```
 
 These rows use the source's competition-scoped `MatchNumber` in a composite

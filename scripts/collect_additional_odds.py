@@ -29,7 +29,10 @@ def _parser() -> argparse.ArgumentParser:
         "--markets",
         nargs="+",
         choices=("btts", "corner_totals"),
-        default=("btts", "corner_totals"),
+        # Corners are being collected as research data. BTTS remains opt-in so
+        # an operator asking for corner history does not also spend quota on a
+        # different market.
+        default=("corner_totals",),
     )
     parser.add_argument(
         "--write",

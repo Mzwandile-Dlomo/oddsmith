@@ -123,8 +123,9 @@ between 2.3 and 74.0 hours before kickoff. It recovered no BTTS or corner prices
 so those ROI gates remain blocked.
 
 The additional-market collector discovers events through the provider's free
-events endpoint, then fetches BTTS and total-corner prices one event at a time.
-It is plan-only unless `--write` is supplied and enforces both event and credit
+events endpoint, then fetches total-corner prices one event at a time. Its
+default is deliberately corners-only; BTTS must be requested explicitly. It is
+plan-only unless `--write` is supplied and enforces both event and credit
 ceilings:
 
 ```bash
@@ -134,10 +135,17 @@ uv run --active python scripts/collect_additional_odds.py
 # Explicitly permit at most five events and 20 credits.
 uv run --active python scripts/collect_additional_odds.py \
   --max-events 5 --max-credits 20 --write
+
+# Opt in to BTTS as well.
+uv run --active python scripts/collect_additional_odds.py \
+  --markets corner_totals btts --max-events 5 --max-credits 20 --write
 ```
 
 The command records the provider-reported credits used and remaining. Schedule
-it only after confirming the account plan and preferred bookmaker regions.
+it only after confirming the account plan and preferred bookmaker regions. The
+six-hourly GitHub sync runs the same corner-only collection with a hard ceiling
+of five events and ten credits; it stores/settles research snapshots only and
+does not enable corner predictions or tickets.
 
 The first capped live run requested five of 79 discovered events. It used 18 of
 the allowed 20 credits, leaving 434, and stored 254 outcomes: 114 BTTS prices
