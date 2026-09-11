@@ -19,7 +19,15 @@ from oddsmith.data.settlement import (
     settle_personal_pool_entries,
     team_key,
 )
-from oddsmith.db import MatchObservation, OddsFixtureResult, OddsSnapshot, get_engine, init_db
+from oddsmith.db import (
+    MatchObservation,
+    OddsFixtureResult,
+    OddsSnapshot,
+    PersonalPoolEntry,
+    get_engine,
+    init_db,
+)
+from oddsmith.slips import LegResult
 from oddsmith.providers.api_football import ApiFootballProvider, ApiFootballResult
 
 
@@ -96,11 +104,32 @@ async def _run() -> int:
             )
             if row[0] not in settled
         ]
+        # Pool picks must get a result even if their fixture was added from a
+        # schedule row before an odds snapshot was collected.
+        pool_targets = list(
+            session.exec(
+                select(
+                    PersonalPoolEntry.fixture_id,
+                    PersonalPoolEntry.kickoff_utc,
+                    PersonalPoolEntry.home_team,
+                    PersonalPoolEntry.away_team,
+                ).where(
+                    PersonalPoolEntry.result == LegResult.PENDING,
+                    PersonalPoolEntry.kickoff_utc >= earliest,
+                    PersonalPoolEntry.kickoff_utc < now,
+                )
+            )
+        )
+        seen_targets = {row[0] for row in priced}
+        for row in pool_targets:
+            if row[0] not in seen_targets:
+                priced.append(row)
+                seen_targets.add(row[0])
     dates = sorted({row[1].date() for row in priced}, reverse=True)
     worst_case = min(len(dates) + len(priced), args.max_requests)
     if not args.write:
         print(
-            f"Plan only: {len(priced)} unresolved priced fixtures across {len(dates)} days; "
+            f"Plan only: {len(priced)} unresolved priced or pool fixtures across {len(dates)} days; "
             f"at most {worst_case} of {args.max_requests} allowed requests. Add --write."
         )
         if args.verbose:

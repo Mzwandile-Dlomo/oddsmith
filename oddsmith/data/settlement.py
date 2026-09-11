@@ -223,6 +223,7 @@ def settle_personal_pool_entries(
         result.fixture_id: result
         for result in session.exec(select(OddsFixtureResult)).all()
     }
+    observations = list(session.exec(select(MatchObservation)))
     timestamp = settled_at or datetime.now(UTC)
     settled = 0
     entries = list(
@@ -232,6 +233,37 @@ def settle_personal_pool_entries(
     )
     for entry in entries:
         fixture_result = results.get(entry.fixture_id)
+        # A personal pick may have been saved from a schedule row before that
+        # provider fixture acquired an odds snapshot. Match it directly to the
+        # final observation so automatic settlement never depends on a price
+        # capture having happened first.
+        if fixture_result is None:
+            candidates = [
+                observation
+                for observation in observations
+                if team_key(observation.home_team) == team_key(entry.home_team)
+                and team_key(observation.away_team) == team_key(entry.away_team)
+            ]
+            observation = min(
+                candidates,
+                key=lambda row: abs(_naive_utc(row.kickoff_utc) - _naive_utc(entry.kickoff_utc)),
+                default=None,
+            )
+            if observation is not None and abs(
+                _naive_utc(observation.kickoff_utc) - _naive_utc(entry.kickoff_utc)
+            ) <= timedelta(hours=12):
+                fixture_result = OddsFixtureResult(
+                    fixture_id=entry.fixture_id,
+                    source=observation.source,
+                    source_key=observation.source_key,
+                    kickoff_utc=observation.kickoff_utc,
+                    home_team=observation.home_team,
+                    away_team=observation.away_team,
+                    home_goals=observation.home_goals,
+                    away_goals=observation.away_goals,
+                    home_corners=observation.home_corners,
+                    away_corners=observation.away_corners,
+                )
         if fixture_result is None:
             continue
         outcome = snapshot_result(entry, fixture_result)

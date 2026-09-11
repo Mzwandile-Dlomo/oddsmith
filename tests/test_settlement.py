@@ -5,9 +5,17 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from oddsmith.data.settlement import (
     settle_from_match_observations,
     settle_pending_slips,
+    settle_personal_pool_entries,
     snapshot_result,
 )
-from oddsmith.db import MatchObservation, OddsFixtureResult, OddsSnapshot, Slip, SlipLeg
+from oddsmith.db import (
+    MatchObservation,
+    OddsFixtureResult,
+    OddsSnapshot,
+    PersonalPoolEntry,
+    Slip,
+    SlipLeg,
+)
 from oddsmith.slips import LegResult, SlipResult
 
 
@@ -153,3 +161,40 @@ def test_settlement_automatically_resolves_saved_paper_ticket():
     assert saved_leg.result is LegResult.WON
     assert saved_slip.result is SlipResult.WON
     assert saved_slip.settled_at == (kickoff + timedelta(hours=2)).replace(tzinfo=None)
+
+
+def test_personal_pool_settles_from_result_observation_without_an_odds_snapshot():
+    kickoff = datetime(2026, 8, 1, 15, tzinfo=UTC)
+    with _session() as session:
+        session.add(
+            PersonalPoolEntry(
+                pool="straight_win",
+                fixture_id="schedule:1",
+                home_team="Home FC",
+                away_team="Away",
+                kickoff_utc=kickoff,
+                provider="schedule",
+                market_type="match_winner",
+                selection="Home",
+                price=1.7,
+            )
+        )
+        session.add(
+            MatchObservation(
+                source_key="result:pool-1",
+                source="test",
+                league="League",
+                season=2026,
+                kickoff_utc=kickoff + timedelta(hours=1),
+                home_team="Home",
+                away_team="Away FC",
+                home_goals=2,
+                away_goals=0,
+                raw_payload={},
+            )
+        )
+        session.commit()
+        assert settle_personal_pool_entries(session, settled_at=kickoff + timedelta(hours=2)) == 1
+        entry = session.exec(select(PersonalPoolEntry)).one()
+
+    assert entry.result is LegResult.WON

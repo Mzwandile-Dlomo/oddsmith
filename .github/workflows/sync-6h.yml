@@ -39,7 +39,7 @@ jobs:
 
       # Results first: settling what has finished is worth more than pricing
       # what hasn't, and it still runs if the odds capture later hits a limit.
-      - name: Ingest completed results and settle
+      - name: Ingest completed results and settle slips and personal pool
         run: |
           uv run python scripts/ingest_current_results.py \
             --lookback-days "${{ inputs.lookback_days || '3' }}" \
