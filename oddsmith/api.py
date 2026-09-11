@@ -1622,6 +1622,7 @@ class CalendarDayModelView(BaseModel):
 class CalendarDayView(BaseModel):
     date: date_type
     fixture_count: int
+    priced_fixture_count: int
     leagues: list[str]
     slip_count: int
     pending_count: int
@@ -1772,6 +1773,7 @@ def calendar(
             CalendarDayView(
                 date=cursor,
                 fixture_count=len(day_fixtures),
+                priced_fixture_count=len(priced_fixtures),
                 leagues=sorted({f.league for f in day_fixtures if f.league}),
                 slip_count=len(day_slips),
                 pending_count=sum(

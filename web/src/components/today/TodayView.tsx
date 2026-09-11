@@ -59,6 +59,8 @@ function UpcomingStrip({ days }: { days: CalendarDay[] }) {
                 ? `${Math.round((day.model?.combined_model_prob ?? 0) * 100)}% @ ${day.model?.combined_odds.toFixed(2)}`
                 : day.fixture_count === 0
                   ? "No card"
+                  : day.priced_fixture_count === 0
+                    ? "Odds pending"
                   : "No target slip"}
             </span>
           </Link>

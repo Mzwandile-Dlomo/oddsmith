@@ -721,6 +721,7 @@ def test_calendar_and_fixture_list_include_persisted_schedule(client):
     ).json()
 
     assert day["fixture_count"] == 1
+    assert day["priced_fixture_count"] == 0
     assert day["leagues"] == ["Premier League"]
     assert fixtures[0]["id"] == "fixture_download:epl:2026:27"
     assert fixtures[0]["markets"] == []

@@ -123,6 +123,7 @@ export function DayView({ date }: { date: string }) {
       {day && (
         <StatGrid min="8.5rem">
           <Stat label="Matches" value={day.fixture_count} />
+          <Stat label="Live odds" value={`${day.priced_fixture_count}/${day.fixture_count}`} />
           <Stat label="Leagues" value={day.leagues.length} />
           <Stat
             label="Model"

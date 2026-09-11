@@ -402,6 +402,8 @@ export interface CalendarDayModel {
 export interface CalendarDay {
   date: string;
   fixture_count: number;
+  /** Fixtures with live bookmaker prices; schedules alone cannot make a ticket. */
+  priced_fixture_count: number;
   leagues: string[];
   slip_count: number;
   pending_count: number;

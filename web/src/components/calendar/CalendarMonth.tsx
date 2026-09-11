@@ -32,6 +32,7 @@ function emptyDay(date: string): CalendarDay {
   return {
     date,
     fixture_count: 0,
+    priced_fixture_count: 0,
     leagues: [],
     slip_count: 0,
     pending_count: 0,
