@@ -84,7 +84,7 @@ function useBankroll() {
     atRisk: pending.reduce((acc, s) => acc + s.stake, 0),
     settledCount: settled.length,
     pendingCount: pending.length,
-    currency: slips[0]?.currency ?? "USD",
+    currency: slips[0]?.currency ?? "ZAR",
   };
 }
 

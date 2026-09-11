@@ -6,9 +6,9 @@ export function formatOdds(price: number): string {
 
 export function formatCurrency(
   amount: number,
-  currency = "USD"
+  currency = "ZAR"
 ): string {
-  return `${currency} ${amount.toFixed(2)}`;
+  return `${currency === "ZAR" ? "R" : currency} ${amount.toFixed(2)}`;
 }
 
 /**
@@ -238,9 +238,9 @@ export function isSameMonth(iso: string, monthIso: string): boolean {
   return iso.slice(0, 7) === monthIso.slice(0, 7);
 }
 
-export function formatSignedCurrency(amount: number, currency = "USD"): string {
+export function formatSignedCurrency(amount: number, currency = "ZAR"): string {
   const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
-  return `${sign}${currency} ${Math.abs(amount).toFixed(2)}`;
+  return `${sign}${currency === "ZAR" ? "R" : currency} ${Math.abs(amount).toFixed(2)}`;
 }
 
 export function formatPercent(value: number, digits = 0): string {

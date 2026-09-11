@@ -432,7 +432,7 @@ export function DailyAcca({
       name: `${data.execution_mode === "paper" ? "Paper" : "Daily"} ${data.combined_odds.toFixed(2)} (${data.legs.length}x)${date ? ` · ${date}` : ""}`,
       // Stake what the plan says, not the whole bankroll.
       stake: data.staking.recommended_stake,
-      currency: "USD",
+      currency: "ZAR",
       legs: data.legs.map((l) => ({
         fixture_id: l.fixture_id,
         home_team: l.home_team,

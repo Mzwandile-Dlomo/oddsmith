@@ -52,7 +52,7 @@ export function SlipPanel({ onSlipSaved, hideHeader = false }: SlipPanelProps) {
     const body: SlipCreate = {
       name: slipName.trim() || null,
       stake: stakeNum > 0 ? stakeNum : undefined,
-      currency: "USD",
+      currency: "ZAR",
       legs: legs.map((l) => ({
         fixture_id: l.fixture_id,
         home_team: l.home_team,
@@ -174,7 +174,7 @@ export function SlipPanel({ onSlipSaved, hideHeader = false }: SlipPanelProps) {
                   htmlFor="stake"
                   className="mb-1.5 block text-xs font-medium text-muted"
                 >
-                  Stake (USD)
+                  Stake (R)
                 </label>
                 <input
                   id="stake"

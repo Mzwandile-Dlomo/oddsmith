@@ -57,7 +57,7 @@ export function CalendarMonth() {
   });
 
   const { data: slips } = useQuery({ queryKey: ["slips"], queryFn: fetchSlips });
-  const currency = slips?.[0]?.currency ?? "USD";
+  const currency = slips?.[0]?.currency ?? "ZAR";
 
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarDay>();

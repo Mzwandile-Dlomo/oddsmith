@@ -81,7 +81,7 @@ export function DayView({ date }: { date: string }) {
   );
 
   const day = summary?.days[0];
-  const currency = slips?.[0]?.currency ?? "USD";
+  const currency = slips?.[0]?.currency ?? "ZAR";
   const settled = daySlips.filter((s) => s.result !== "pending");
   const pnl = settled.reduce((a, s) => a + s.profit_loss, 0);
 
@@ -200,4 +200,3 @@ export function DayView({ date }: { date: string }) {
     </div>
   );
 }
-

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://oddsmith:oddsmith@localhost:5435/oddsmith",
         repr=False,
     )
-    default_currency: str = "USD"
+    default_currency: str = "ZAR"
     http_timeout_seconds: float = 15.0
     cors_origins: list[str] = ["http://localhost:3000"]
     # Simple in-memory cache TTL for provider responses (seconds).

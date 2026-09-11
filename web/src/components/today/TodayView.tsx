@@ -85,7 +85,7 @@ export function TodayView() {
   );
 
   const settledToday = todaySlips.filter((s) => s.result !== "pending");
-  const currency = slips?.[0]?.currency ?? "USD";
+  const currency = slips?.[0]?.currency ?? "ZAR";
   const todayPnl = settledToday.reduce((a, s) => a + s.profit_loss, 0);
 
   const todayCard = week?.days.find((d) => d.date === today);

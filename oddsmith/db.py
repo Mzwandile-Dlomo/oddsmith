@@ -27,7 +27,7 @@ class Slip(SQLModel, table=True):
     user_id: str = Field(default=DEFAULT_USER_ID, index=True)
     name: str | None = None
     stake: float = 0.0
-    currency: str = "USD"
+    currency: str = "ZAR"
     result: SlipResult = Field(default=SlipResult.PENDING)
     created_at: datetime = Field(default_factory=_now)
     settled_at: datetime | None = None

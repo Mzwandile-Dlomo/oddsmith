@@ -167,7 +167,7 @@ get more content, not more gutter.
 
 ## 6. Accepted Debt
 - No dark mode in v1
-- No i18n for currency symbols (USD default)
+- No i18n for currency symbols (South African rand default)
 - The bottom sheets are tap-to-dismiss only; there is no drag-to-dismiss gesture
 - Calendar cells shed detail below `sm` (match counts at `sm`, leagues at `lg`);
   seven columns cannot show more on a 375px screen

@@ -254,7 +254,7 @@ export function OddsGenerator() {
     saveMutation.mutate({
       name: `Value acca (${validLegs.length}x)`,
       stake: 10,
-      currency: "USD",
+      currency: "ZAR",
       legs: validLegs.map((l) => ({
         fixture_id: l.fixture_id,
         home_team: l.home_team,
