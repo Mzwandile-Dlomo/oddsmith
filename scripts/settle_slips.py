@@ -15,7 +15,7 @@ from sqlmodel import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from oddsmith.data.settlement import settle_pending_slips
+from oddsmith.data.settlement import settle_pending_slips, settle_personal_pool_entries
 from oddsmith.db import get_engine, init_db
 
 
@@ -24,9 +24,11 @@ def main() -> int:
     init_db()
     with Session(get_engine()) as session:
         run = settle_pending_slips(session)
+        pool_entries = settle_personal_pool_entries(session)
     print(
         f"Settled {run.legs_settled} pending legs across "
         f"{run.slips_settled} newly decided slips."
+        f" Settled {pool_entries} personal-pool selections."
     )
     return 0
 

@@ -35,6 +35,7 @@ from oddsmith.db import (
     ModelEvaluationSnapshot,
     OddsSnapshot,
     OddsFixtureResult,
+    PersonalPoolEntry,
     Slip,
     SlipLeg,
     get_session,
@@ -210,6 +211,37 @@ class SlipView(BaseModel):
     potential_profit: float
     payout: float
     profit_loss: float
+
+
+class PersonalPoolEntryCreate(LegCreate):
+    """A manual favourite. The category is derived from its market."""
+
+
+class PersonalPoolEntryUpdate(BaseModel):
+    result: LegResult
+
+
+class PersonalPoolEntryView(LegView):
+    pool: str
+    created_at: datetime
+    settled_at: datetime | None
+
+
+class PersonalPoolSummaryView(BaseModel):
+    pool: str
+    label: str
+    total: int
+    pending: int
+    won: int
+    lost: int
+    void: int
+    win_rate: float | None
+
+
+class PersonalPoolView(BaseModel):
+    entries: list[PersonalPoolEntryView]
+    summaries: list[PersonalPoolSummaryView]
+    note: str
 
 
 # --------------------------------------------------------------------------- #
@@ -1421,6 +1453,135 @@ def update_slip(
     legs = _load_legs(session, slip_id)
     session.refresh(slip)
     return _to_slip_view(slip, legs)
+
+
+# --------------------------------------------------------------------------- #
+# Personal favourable pools
+# --------------------------------------------------------------------------- #
+
+
+def _personal_pool_for(leg: PersonalPoolEntryCreate) -> str:
+    """Keep personal buckets narrowly scoped and unambiguous."""
+    if leg.market_type is MarketType.MATCH_WINNER and leg.selection in {"Home", "Away"}:
+        return "straight_win"
+    if leg.market_type is MarketType.CORNER_TOTALS:
+        return "corners"
+    raise HTTPException(
+        status_code=422,
+        detail="Personal pools support only a Home/Away straight win or a corner total.",
+    )
+
+
+def _to_personal_pool_entry_view(entry: PersonalPoolEntry) -> PersonalPoolEntryView:
+    return PersonalPoolEntryView(
+        id=entry.id or 0,
+        fixture_id=entry.fixture_id,
+        home_team=entry.home_team,
+        away_team=entry.away_team,
+        kickoff_utc=entry.kickoff_utc,
+        league=entry.league,
+        provider=entry.provider,
+        market_type=entry.market_type,
+        selection=entry.selection,
+        point=entry.point,
+        price=entry.price,
+        result=entry.result,
+        pool=entry.pool,
+        created_at=entry.created_at,
+        settled_at=entry.settled_at,
+    )
+
+
+def _personal_pool_summary(entries: list[PersonalPoolEntry], pool: str) -> PersonalPoolSummaryView:
+    scoped = [entry for entry in entries if entry.pool == pool]
+    settled = [entry for entry in scoped if entry.result is not LegResult.PENDING]
+    won = sum(entry.result is LegResult.WON for entry in settled)
+    return PersonalPoolSummaryView(
+        pool=pool,
+        label="Straight wins" if pool == "straight_win" else "Corners",
+        total=len(scoped),
+        pending=sum(entry.result is LegResult.PENDING for entry in scoped),
+        won=won,
+        lost=sum(entry.result is LegResult.LOST for entry in settled),
+        void=sum(entry.result is LegResult.VOID for entry in settled),
+        win_rate=round(won / len(settled), 4) if settled else None,
+    )
+
+
+@app.get("/personal-pool", response_model=PersonalPoolView)
+def personal_pool(session: Session = Depends(get_session)) -> PersonalPoolView:
+    entries = list(
+        session.exec(
+            select(PersonalPoolEntry)
+            .where(PersonalPoolEntry.user_id == DEFAULT_USER_ID)
+            .order_by(PersonalPoolEntry.kickoff_utc, PersonalPoolEntry.created_at.desc())
+        )
+    )
+    return PersonalPoolView(
+        entries=[_to_personal_pool_entry_view(entry) for entry in entries],
+        summaries=[
+            _personal_pool_summary(entries, "straight_win"),
+            _personal_pool_summary(entries, "corners"),
+        ],
+        note=(
+            "A personal shortlist for review. Its results are tracked separately and do not "
+            "alter model probabilities, value labels, or automated stake limits."
+        ),
+    )
+
+
+@app.post("/personal-pool", response_model=PersonalPoolEntryView, status_code=201)
+def add_personal_pool_entry(
+    payload: PersonalPoolEntryCreate, session: Session = Depends(get_session)
+) -> PersonalPoolEntryView:
+    pool = _personal_pool_for(payload)
+    duplicate = session.exec(
+        select(PersonalPoolEntry).where(
+            PersonalPoolEntry.user_id == DEFAULT_USER_ID,
+            PersonalPoolEntry.fixture_id == payload.fixture_id,
+            PersonalPoolEntry.market_type == payload.market_type.value,
+            PersonalPoolEntry.selection == payload.selection,
+        )
+    ).first()
+    if duplicate is not None:
+        return _to_personal_pool_entry_view(duplicate)
+    entry = PersonalPoolEntry(
+        user_id=DEFAULT_USER_ID,
+        pool=pool,
+        fixture_id=payload.fixture_id,
+        home_team=payload.home_team,
+        away_team=payload.away_team,
+        kickoff_utc=payload.kickoff_utc,
+        league=payload.league,
+        provider=payload.provider,
+        market_type=payload.market_type.value,
+        selection=payload.selection,
+        point=payload.point,
+        price=payload.price,
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return _to_personal_pool_entry_view(entry)
+
+
+@app.patch("/personal-pool/{entry_id}", response_model=PersonalPoolEntryView)
+def update_personal_pool_entry(
+    entry_id: int,
+    payload: PersonalPoolEntryUpdate,
+    session: Session = Depends(get_session),
+) -> PersonalPoolEntryView:
+    entry = session.get(PersonalPoolEntry, entry_id)
+    if entry is None or entry.user_id != DEFAULT_USER_ID:
+        raise HTTPException(status_code=404, detail="personal pool entry not found")
+    entry.result = payload.result
+    entry.settled_at = (
+        None if payload.result is LegResult.PENDING else entry.settled_at or datetime.now(UTC)
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return _to_personal_pool_entry_view(entry)
 
 
 # --------------------------------------------------------------------------- #

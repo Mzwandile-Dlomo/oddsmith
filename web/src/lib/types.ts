@@ -342,6 +342,29 @@ export interface SlipBuilderLeg {
   key: string;
 }
 
+export interface PersonalPoolEntry extends LegView {
+  pool: "straight_win" | "corners";
+  created_at: string;
+  settled_at: string | null;
+}
+
+export interface PersonalPoolSummary {
+  pool: "straight_win" | "corners";
+  label: string;
+  total: number;
+  pending: number;
+  won: number;
+  lost: number;
+  void: number;
+  win_rate: number | null;
+}
+
+export interface PersonalPoolView {
+  entries: PersonalPoolEntry[];
+  summaries: PersonalPoolSummary[];
+  note: string;
+}
+
 export interface HistoryMatch {
   id: number;
   league: string;

@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from oddsmith.data.settlement import (
     settle_from_match_observations,
     settle_pending_slips,
+    settle_personal_pool_entries,
     team_key,
 )
 from oddsmith.db import MatchObservation, OddsFixtureResult, OddsSnapshot, get_engine, init_db
@@ -184,12 +185,14 @@ async def _run() -> int:
         session.commit()
         settlement = settle_from_match_observations(session)
         slip_settlement = settle_pending_slips(session)
+        pool_settled = settle_personal_pool_entries(session)
     print(
         f"Used {requests}/{args.max_requests} requests ({stats_requests} statistics); "
         f"provider returned {completed_returned} finals; matched {len(collected)} priced "
         f"fixtures; inserted {inserted} results; settled {settlement.matched}; "
         f"settled {slip_settlement.legs_settled} paper legs across "
         f"{slip_settlement.slips_settled} tickets; "
+        f"settled {pool_settled} personal-pool selections; "
         f"rate limited {'yes' if rate_limited else 'no'}; "
         f"daily requests remaining {daily_remaining if daily_remaining is not None else 'unknown'}."
     )

@@ -53,6 +53,31 @@ class SlipLeg(SQLModel, table=True):
     result: LegResult = Field(default=LegResult.PENDING)
 
 
+class PersonalPoolEntry(SQLModel, table=True):
+    """A personally curated selection, tracked independently from model picks.
+
+    Pools deliberately contain only the two user-requested market families.
+    They are a review shortlist, not a training label or a model-promotion signal.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(default=DEFAULT_USER_ID, index=True)
+    pool: str = Field(index=True)  # ``straight_win`` or ``corners``
+    fixture_id: str = Field(index=True)
+    home_team: str
+    away_team: str
+    kickoff_utc: datetime = Field(index=True)
+    league: str | None = None
+    provider: str
+    market_type: str = Field(index=True)
+    selection: str
+    point: float | None = None
+    price: float
+    result: LegResult = Field(default=LegResult.PENDING, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    settled_at: datetime | None = None
+
+
 class CachedFixture(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     fixture_id: str = Field(index=True, unique=True)

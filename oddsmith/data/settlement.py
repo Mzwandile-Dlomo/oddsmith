@@ -12,6 +12,7 @@ from oddsmith.db import (
     MatchObservation,
     OddsFixtureResult,
     OddsSnapshot,
+    PersonalPoolEntry,
     Slip,
     SlipLeg,
 )
@@ -132,7 +133,7 @@ def settle_from_match_observations(
 
 
 def snapshot_result(
-    snapshot: OddsSnapshot | SlipLeg, result: OddsFixtureResult
+    snapshot: OddsSnapshot | SlipLeg | PersonalPoolEntry, result: OddsFixtureResult
 ) -> str | None:
     """Return won/lost/void for supported selections, or None if facts are missing."""
     if snapshot.market_type == MarketType.MATCH_WINNER.value:
@@ -212,3 +213,33 @@ def settle_pending_slips(
         legs_settled=legs_settled,
         slips_settled=slips_settled,
     )
+
+
+def settle_personal_pool_entries(
+    session: Session, *, settled_at: datetime | None = None
+) -> int:
+    """Settle saved personal-pool selections when their fixture result arrives."""
+    results = {
+        result.fixture_id: result
+        for result in session.exec(select(OddsFixtureResult)).all()
+    }
+    timestamp = settled_at or datetime.now(UTC)
+    settled = 0
+    entries = list(
+        session.exec(
+            select(PersonalPoolEntry).where(PersonalPoolEntry.result == LegResult.PENDING)
+        )
+    )
+    for entry in entries:
+        fixture_result = results.get(entry.fixture_id)
+        if fixture_result is None:
+            continue
+        outcome = snapshot_result(entry, fixture_result)
+        if outcome is None:
+            continue
+        entry.result = LegResult(outcome)
+        entry.settled_at = timestamp
+        session.add(entry)
+        settled += 1
+    session.commit()
+    return settled

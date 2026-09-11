@@ -7,9 +7,12 @@ import type {
   EvaluationReportView,
   Fixture,
   HistoryMatch,
+  LegCreate,
   MarketType,
   ModelReadinessView,
   PaperPerformanceView,
+  PersonalPoolEntry,
+  PersonalPoolView,
   SlipCreate,
   SlipUpdate,
   SlipView,
@@ -64,6 +67,17 @@ export async function createSlip(body: SlipCreate): Promise<SlipView> {
 
 export async function fetchSlips(): Promise<SlipView[]> {
   return request<SlipView[]>("/slips");
+}
+
+export async function fetchPersonalPool(): Promise<PersonalPoolView> {
+  return request<PersonalPoolView>("/personal-pool");
+}
+
+export async function addPersonalPoolEntry(body: LegCreate): Promise<PersonalPoolEntry> {
+  return request<PersonalPoolEntry>("/personal-pool", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function fetchSlip(id: number): Promise<SlipView> {

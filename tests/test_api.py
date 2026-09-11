@@ -367,6 +367,45 @@ def test_get_missing_slip_404(client):
     assert client.get("/slips/9999").status_code == 404
 
 
+def test_personal_pool_tracks_straight_wins_without_claiming_model_validation(client):
+    payload = {
+        "fixture_id": "stub:pool",
+        "home_team": "Arsenal",
+        "away_team": "Chelsea",
+        "kickoff_utc": "2026-07-25T15:00:00Z",
+        "league": "EPL",
+        "provider": "stub",
+        "market_type": "match_winner",
+        "selection": "Home",
+        "price": 1.8,
+    }
+    created = client.post("/personal-pool", json=payload)
+    assert created.status_code == 201
+    entry = created.json()
+    assert entry["pool"] == "straight_win"
+
+    client.patch(f"/personal-pool/{entry['id']}", json={"result": "won"})
+    body = client.get("/personal-pool").json()
+    summary = {item["pool"]: item for item in body["summaries"]}
+    assert summary["straight_win"]["won"] == 1
+    assert summary["straight_win"]["win_rate"] == 1.0
+    assert "do not alter model probabilities" in body["note"]
+
+
+def test_personal_pool_rejects_draws_and_non_pool_markets(client):
+    payload = {
+        "fixture_id": "stub:draw",
+        "home_team": "Arsenal",
+        "away_team": "Chelsea",
+        "kickoff_utc": "2026-07-25T15:00:00Z",
+        "provider": "stub",
+        "market_type": "match_winner",
+        "selection": "Draw",
+        "price": 3.2,
+    }
+    assert client.post("/personal-pool", json=payload).status_code == 422
+
+
 # --------------------------------------------------------------------------- #
 # Daily "banker" acca + staking
 # --------------------------------------------------------------------------- #

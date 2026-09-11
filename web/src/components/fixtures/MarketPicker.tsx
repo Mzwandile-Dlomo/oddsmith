@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pin } from "lucide-react";
 import type { Fixture, Market, MarketType, ModelMarket, ModelOutcome, Outcome } from "@/lib/types";
+import { addPersonalPoolEntry, fetchPersonalPool } from "@/lib/api";
 import { formatOdds, marketLabel, outcomeLabel } from "@/lib/utils";
 import { useSlipStore } from "@/store/slip-store";
 
@@ -124,6 +127,15 @@ function buildEnrichedMarkets(
 
 export function MarketPicker({ fixture }: MarketPickerProps) {
   const { addLeg, getSelection } = useSlipStore();
+  const queryClient = useQueryClient();
+  const { data: personalPool } = useQuery({
+    queryKey: ["personal-pool"],
+    queryFn: fetchPersonalPool,
+  });
+  const saveToPool = useMutation({
+    mutationFn: addPersonalPoolEntry,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["personal-pool"] }),
+  });
 
   const deduped = useMemo(
     () => deduplicateMarkets(fixture.markets),
@@ -184,6 +196,12 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
                     fixture.away_team
                   );
                   const isActive = activeSelection === outcome.name;
+                  const poolEligible =
+                    (market.type === "match_winner" && ["Home", "Away"].includes(outcome.name)) ||
+                    market.type === "corner_totals";
+                  const inPool = personalPool?.entries.some(
+                    (entry) => entry.fixture_id === fixture.id && entry.market_type === market.type && entry.selection === outcome.name
+                  );
 
                   if (market.isModelOnly) {
                     return (
@@ -210,8 +228,8 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
                   }
 
                   return (
+                    <div key={outcome.name} className="flex min-w-0 flex-col gap-1">
                     <button
-                      key={outcome.name}
                       onClick={() =>
                         addLeg({
                           fixture_id: fixture.id,
@@ -252,6 +270,29 @@ export function MarketPicker({ fixture }: MarketPickerProps) {
                         </div>
                       )}
                     </button>
+                    {poolEligible && (
+                      <button
+                        type="button"
+                        disabled={inPool || saveToPool.isPending}
+                        onClick={() => saveToPool.mutate({
+                          fixture_id: fixture.id,
+                          home_team: fixture.home_team,
+                          away_team: fixture.away_team,
+                          kickoff_utc: fixture.kickoff_utc,
+                          league: fixture.league,
+                          provider: fixture.provider,
+                          market_type: market.type,
+                          selection: outcome.name,
+                          point: outcome.point,
+                          price: outcome.bestPrice,
+                        })}
+                        className={`flex min-h-7 items-center justify-center gap-1 rounded-md px-2 text-[10px] font-semibold transition-colors ${inPool ? "bg-accent-light text-accent" : "text-faint hover:bg-hairline hover:text-ink"}`}
+                      >
+                        <Pin size={11} fill={inPool ? "currentColor" : "none"} />
+                        {inPool ? "In personal pool" : "Add to pool"}
+                      </button>
+                    )}
+                    </div>
                   );
                 })}
               </div>
