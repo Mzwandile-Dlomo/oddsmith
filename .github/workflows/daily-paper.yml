@@ -1,0 +1,35 @@
+# Archive exactly one pre-kickoff paper ticket every day. Its later settlement
+# is the evidence used to monitor the daily strategy, never a promise of a bet.
+name: Generate daily paper ticket
+
+on:
+  schedule:
+    # Runs after the 06:40 UTC odds/result sync, so the ticket uses that day's
+    # latest cached board rather than the previous cycle's prices.
+    - cron: "5 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: oddsmith-daily-paper
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dev
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Generate and archive today's qualified paper ticket
+        run: uv run python scripts/generate_daily_paper.py

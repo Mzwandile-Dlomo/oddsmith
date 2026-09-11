@@ -174,3 +174,20 @@ and affiliate disclosures.
 
 The metrics that matter are out-of-sample calibration, closing-line value, and
 real settled ROI after a meaningful sample—not the number of winning days.
+
+## Automated daily research loop
+
+The included GitHub Actions schedules keep the evidence loop running once the
+repository is deployed and the `dev` environment has `DATABASE_URL`,
+`THE_ODDS_API_KEY`, and `API_FOOTBALL_KEY` secrets configured:
+
+- `sync-6h.yml` captures current prices, ingests finished results, and settles
+  slips and personal-pool picks every six hours.
+- `settle-hourly.yml` rechecks stored results hourly without provider calls.
+- `daily-paper.yml` archives one qualified goals/1X2/BTTS paper ticket at
+  06:05 UTC. A no-bet day stays a no-bet day; it is not padded with weak legs.
+
+Corner and booking facts are collected as match history. Corners need a larger
+sample of settled corner prices before their count model can enter the ticket
+generator. Booking prices and a separately validated cards model are not yet
+available, so cards remain a research feature rather than a generated bet.

@@ -13,7 +13,7 @@ WEB_PORT ?= 3000
 .PHONY: help setup web-setup db-up db-down db-reset db-logs \
         up up-db down run web-dev test lint fmt check \
         web-build web-lint web-check sync-football-data sync-fixtures \
-        settle sync collect-corners clean
+        settle sync daily-paper collect-corners clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -73,6 +73,9 @@ settle: ## Settle from data already in the DB (no provider calls, no quota)
 sync: ## Fetch results and fresh prices, then settle (spends provider quota)
 	$(UV) python scripts/ingest_current_results.py --lookback-days 3 --write
 	$(UV) python scripts/capture_odds.py --days 3
+
+daily-paper: ## Archive today's qualified model ticket as a paper observation
+	$(UV) python scripts/generate_daily_paper.py
 
 collect-corners: ## Collect research-only corner prices (max 5 events / 10 credits)
 	$(UV) python scripts/capture_odds.py --markets corner_totals --max-additional-events 5 --max-additional-credits 10
