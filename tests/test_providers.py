@@ -8,6 +8,12 @@ from oddsmith.config import Settings
 from oddsmith.models import MarketType
 from oddsmith.providers.api_football import ApiFootballProvider
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
+from oddsmith.providers.the_odds_api import DEFAULT_SOCCER_SPORTS
+
+
+def test_default_odds_catalogue_includes_both_major_uefa_cups():
+    assert "soccer_uefa_champs_league" in DEFAULT_SOCCER_SPORTS
+    assert "soccer_uefa_europa_league" in DEFAULT_SOCCER_SPORTS
 
 
 @pytest.fixture

@@ -112,6 +112,9 @@ make web-dev
 The Football-Data sync needs no API key. Live odds providers are optional and
 require their corresponding key. Oddsmith's model endpoints need rows in
 `historicalmatch`; without them the API reports that the model is untrained.
+The automated live-odds scan includes the five major domestic leagues plus the
+UEFA Champions League and UEFA Europa League. Both cups are also available to
+the API-Football schedule sync as `champions-league` and `europa-league`.
 
 ## Persistent match API
 

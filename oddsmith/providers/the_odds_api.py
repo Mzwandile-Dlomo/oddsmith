@@ -37,6 +37,7 @@ DEFAULT_SOCCER_SPORTS = (
     "soccer_germany_bundesliga",
     "soccer_france_ligue_one",
     "soccer_uefa_champs_league",
+    "soccer_uefa_europa_league",
     "soccer_brazil_campeonato",
     "soccer_argentina_primera_division",
     "soccer_usa_mls",
