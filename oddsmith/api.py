@@ -1237,6 +1237,43 @@ class HistoryMatchView(BaseModel):
     away_goals: int
 
 
+def _history_match_rows(session: Session) -> list[HistoryMatchView]:
+    """Combine long-run CSV history with recently ingested cup/live results.
+
+    Football-Data supplies the five domestic leagues, while Champions League and
+    Europa League results arrive through ``MatchObservation``.  The Results UI
+    must see both sources.  Prefer an observation when both describe the same
+    fixture because it is the newer, richer source row.
+    """
+    rows: dict[tuple[str, datetime, str, str], HistoryMatchView] = {}
+    for match in session.exec(select(HistoricalMatch)):
+        key = (match.league, match.kickoff_utc, match.home_team, match.away_team)
+        rows[key] = HistoryMatchView(
+            id=match.id or 0,
+            league=match.league,
+            season=match.season,
+            kickoff_utc=match.kickoff_utc,
+            home_team=match.home_team,
+            away_team=match.away_team,
+            home_goals=match.home_goals,
+            away_goals=match.away_goals,
+        )
+    for match in session.exec(select(MatchObservation)):
+        key = (match.league, match.kickoff_utc, match.home_team, match.away_team)
+        rows[key] = HistoryMatchView(
+            # Keep IDs unambiguous when a browser renders mixed source rows.
+            id=-(match.id or 1),
+            league=match.league,
+            season=match.season,
+            kickoff_utc=match.kickoff_utc,
+            home_team=match.home_team,
+            away_team=match.away_team,
+            home_goals=match.home_goals,
+            away_goals=match.away_goals,
+        )
+    return sorted(rows.values(), key=lambda match: match.kickoff_utc, reverse=True)
+
+
 class TeamStatsView(BaseModel):
     team: str
     played: int
@@ -1254,8 +1291,7 @@ class TeamStatsView(BaseModel):
 
 @app.get("/history/leagues", response_model=list[str])
 def history_leagues(session: Session = Depends(get_session)) -> list[str]:
-    rows = session.exec(select(HistoricalMatch.league).distinct())
-    return sorted(rows)
+    return sorted({match.league for match in _history_match_rows(session)})
 
 
 @app.get("/history/matches", response_model=list[HistoryMatchView])
@@ -1266,28 +1302,12 @@ def history_matches(
     offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ) -> list[HistoryMatchView]:
-    query = select(HistoricalMatch)
+    rows = _history_match_rows(session)
     if league:
-        query = query.where(HistoricalMatch.league == league)
+        rows = [row for row in rows if row.league == league]
     if team:
-        query = query.where(
-            (HistoricalMatch.home_team == team) | (HistoricalMatch.away_team == team)
-        )
-    query = query.order_by(HistoricalMatch.kickoff_utc.desc()).offset(offset).limit(limit)
-    rows = session.exec(query)
-    return [
-        HistoryMatchView(
-            id=r.id or 0,
-            league=r.league,
-            season=r.season,
-            kickoff_utc=r.kickoff_utc,
-            home_team=r.home_team,
-            away_team=r.away_team,
-            home_goals=r.home_goals,
-            away_goals=r.away_goals,
-        )
-        for r in rows
-    ]
+        rows = [row for row in rows if team in (row.home_team, row.away_team)]
+    return rows[offset : offset + limit]
 
 
 @app.get("/history/teams/{team}/stats", response_model=TeamStatsView)
@@ -1296,12 +1316,12 @@ def history_team_stats(
     league: str | None = Query(default=None),
     session: Session = Depends(get_session),
 ) -> TeamStatsView:
-    query = select(HistoricalMatch).where(
-        (HistoricalMatch.home_team == team) | (HistoricalMatch.away_team == team)
-    )
-    if league:
-        query = query.where(HistoricalMatch.league == league)
-    rows = list(session.exec(query.order_by(HistoricalMatch.kickoff_utc)))
+    rows = [
+        row
+        for row in _history_match_rows(session)
+        if team in (row.home_team, row.away_team) and (league is None or row.league == league)
+    ]
+    rows.sort(key=lambda row: row.kickoff_utc)
     if not rows:
         raise HTTPException(status_code=404, detail="team not found in history")
 

@@ -141,6 +141,48 @@ def test_model_readiness_reports_coverage(client):
     assert markets["match_winner"]["settled_rows"] == 0
 
 
+def test_results_history_includes_ingested_champions_and_europa_league_results(client):
+    with Session(db_module.get_engine()) as session:
+        session.add_all(
+            [
+                MatchObservation(
+                    source_key="test:champions-result",
+                    source="api_football_result",
+                    league="UEFA Champions League",
+                    season=2026,
+                    kickoff_utc=datetime(2026, 9, 10, tzinfo=UTC),
+                    home_team="Arsenal",
+                    away_team="Bayern Munich",
+                    home_goals=2,
+                    away_goals=1,
+                    raw_payload={},
+                ),
+                MatchObservation(
+                    source_key="test:europa-result",
+                    source="api_football_result",
+                    league="UEFA Europa League",
+                    season=2026,
+                    kickoff_utc=datetime(2026, 9, 9, tzinfo=UTC),
+                    home_team="Roma",
+                    away_team="Lyon",
+                    home_goals=1,
+                    away_goals=0,
+                    raw_payload={},
+                ),
+            ]
+        )
+        session.commit()
+
+    leagues = client.get("/history/leagues").json()
+    champions = client.get("/history/matches", params={"league": "UEFA Champions League"}).json()
+    europa = client.get("/history/matches", params={"league": "UEFA Europa League"}).json()
+
+    assert "UEFA Champions League" in leagues
+    assert "UEFA Europa League" in leagues
+    assert champions[0]["home_team"] == "Arsenal"
+    assert europa[0]["home_team"] == "Roma"
+
+
 def test_paper_performance_uses_only_generated_paper_tickets_and_unit_stakes(client):
     paper_win = _slip_on("2026-07-22T15:00:00Z", stake=0, price=2.0)
     paper_win["name"] = "Paper 2.00 (1x)"
