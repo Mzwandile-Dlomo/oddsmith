@@ -55,4 +55,5 @@ jobs:
           uv run python scripts/capture_odds.py --days 3 \
             --markets corner_totals \
             --max-additional-events 5 \
-            --max-additional-credits 10
+            --max-additional-credits 10 \
+            --additional-optional

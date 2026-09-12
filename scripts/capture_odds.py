@@ -25,7 +25,7 @@ from oddsmith.data.odds_snapshots import capture_odds_snapshots
 from oddsmith.db import OddsSnapshot, get_engine, init_db
 from oddsmith.models import MarketType
 from oddsmith.providers.api_football import ApiFootballProvider
-from oddsmith.providers.base import OddsProvider
+from oddsmith.providers.base import OddsProvider, ProviderError
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
 
 
@@ -56,6 +56,14 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         default=10,
         help="hard credit ceiling for BTTS/corner per-event price collection",
+    )
+    parser.add_argument(
+        "--additional-optional",
+        action="store_true",
+        help=(
+            "report an unavailable BTTS/corner market and continue successfully; "
+            "use only for scheduled research collection"
+        ),
     )
     return parser
 
@@ -103,16 +111,25 @@ async def _run() -> int:
                 force_refresh=True,
             )
         if additional_markets:
-            result = await TheOddsApiProvider().collect_additional_markets(
-                date_from=now,
-                date_to=end,
-                markets=additional_markets,
-                max_events=args.max_additional_events,
-                max_credits=args.max_additional_credits,
-            )
-            capture_odds_snapshots(session, result.fixtures, captured_at=now)
-            session.commit()
-            fixtures.extend(result.fixtures)
+            try:
+                result = await TheOddsApiProvider().collect_additional_markets(
+                    date_from=now,
+                    date_to=end,
+                    markets=additional_markets,
+                    max_events=args.max_additional_events,
+                    max_credits=args.max_additional_credits,
+                )
+            except ProviderError as exc:
+                if not args.additional_optional:
+                    raise
+                print(
+                    "WARNING: additional-market research was skipped; "
+                    f"the configured account did not accept this request ({exc})."
+                )
+            else:
+                capture_odds_snapshots(session, result.fixtures, captured_at=now)
+                session.commit()
+                fixtures.extend(result.fixtures)
         after = _snapshot_count(session)
     print(
         f"Captured {after - before} new price outcomes across {len(fixtures)} fixtures "

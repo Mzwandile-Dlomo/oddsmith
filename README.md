@@ -188,7 +188,11 @@ repository is deployed and the `dev` environment has `DATABASE_URL`,
   slips and personal-pool picks every six hours.
 - `settle-hourly.yml` rechecks stored results hourly without provider calls.
 - `daily-paper.yml` archives one qualified goals/1X2/BTTS paper ticket at
-  06:05 UTC. A no-bet day stays a no-bet day; it is not padded with weak legs.
+  07:05 UTC. A no-bet day stays a no-bet day; it is not padded with weak legs.
+
+Corner-price collection is optional research. If an Odds API plan does not
+authorize `alternate_totals_corners`, the scheduled job logs a warning and
+continues with normal odds capture, result ingestion, and settlement.
 
 Corner and booking facts are collected as match history. Corners need a larger
 sample of settled corner prices before their count model can enter the ticket
