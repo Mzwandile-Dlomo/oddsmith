@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from oddsmith.api import daily_acca, get_providers
 from oddsmith.db import get_engine, init_db
+from oddsmith.models import MarketType
+from oddsmith.odds_model.target_acca import MAX_PLAUSIBLE_EDGE
 
 
 async def _run() -> int:
@@ -27,8 +29,20 @@ async def _run() -> int:
     end = datetime.combine(now.date(), time.max, tzinfo=UTC)
     with Session(get_engine()) as session:
         ticket = await daily_acca(
+            target_odds=1.5,
+            max_legs=4,
+            min_leg_prob=0.55,
+            require_value=True,
+            max_edge=MAX_PLAUSIBLE_EDGE,
+            bankroll=100.0,
+            horizon_bets=30,
             date_from=start,
             date_to=end,
+            markets=[
+                MarketType.MATCH_WINNER,
+                MarketType.OVER_UNDER,
+                MarketType.BTTS,
+            ],
             auto_track=True,
             providers=get_providers(),
             session=session,
