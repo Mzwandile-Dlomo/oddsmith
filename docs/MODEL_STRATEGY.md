@@ -196,6 +196,28 @@ zero-stake safety does not prevent hit-rate, unit P&L, and ROI monitoring. The
 100-ticket counter is a monitoring milestone, not a promotion rule: real-money
 mode still requires the independent unseen-season gates above.
 
+### Rejected challenger features (2026-10-28)
+
+`build_training_examples` supports two opt-in groups, `venue` (home-only and
+away-only form) and `h2h` (previous same-league meetings, scored from the
+current home side). Both stay off by default. They were benchmarked with
+`scripts/evaluate_challenger.py --extra-features ...` on identical rows
+(17,897 unseen matches):
+
+| Run | Log loss | Brier | Calibration error | ROI | 95% ROI interval |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Closing market | 0.9629 | 0.5717 | 0.0101 | — | — |
+| Baseline | 0.9742 | 0.5788 | 0.0119 | -2.51% | -5.98% to +1.06% |
+| + venue | 0.9744 | 0.5787 | 0.0124 | -2.72% | -6.26% to +0.80% |
+| + h2h | 0.9750 | 0.5792 | 0.0124 | -4.41% | -7.80% to -0.82% |
+| + venue + h2h | 0.9751 | 0.5793 | 0.0157 | -1.68% | -5.05% to +1.91% |
+
+None beats the baseline on log loss or calibration, so none is promoted. The
+higher ROI of the combined run comes with worse calibration and an interval
+that still spans zero; it is noise, not an edge. These test seasons have now
+been looked at, so do not tweak these groups and re-run against the same
+folds: that would be tuning on the test set.
+
 ## Immediate sequence
 
 1. Keep the latest full season untouched while iterating on challenger features.

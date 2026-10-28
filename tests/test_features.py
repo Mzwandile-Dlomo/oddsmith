@@ -5,7 +5,13 @@ from oddsmith.db import MatchObservation
 
 
 def _match(
-    day: int, home_goals: int, away_goals: int, *, league: str = "EPL"
+    day: int,
+    home_goals: int,
+    away_goals: int,
+    *,
+    league: str = "EPL",
+    home: str = "Home",
+    away: str = "Away",
 ) -> MatchObservation:
     return MatchObservation(
         source_key=f"match:{day}",
@@ -13,8 +19,8 @@ def _match(
         league=league,
         season=2025,
         kickoff_utc=datetime(2025, 8, 1, tzinfo=UTC) + timedelta(days=day),
-        home_team="Home",
-        away_team="Away",
+        home_team=home,
+        away_team=away,
         home_goals=home_goals,
         away_goals=away_goals,
         home_shots=10 + day,
@@ -83,5 +89,80 @@ def test_invalid_feature_window_is_rejected():
         build_training_examples([], window=0)
     except ValueError as exc:
         assert "window" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_extra_feature_groups_are_off_by_default():
+    # The published boosted and corner benchmarks train on every feature key, so
+    # the default output must not gain columns silently.
+    examples = build_training_examples([_match(0, 1, 0), _match(7, 2, 2)], min_team_matches=1)
+
+    keys = examples[0].features.keys()
+    assert not any("venue" in key or key.startswith("h2h_") for key in keys)
+
+
+def test_venue_features_use_only_same_venue_history():
+    matches = [
+        _match(0, 3, 0, home="A", away="B"),  # A at home
+        _match(7, 0, 4, home="C", away="A"),  # A away: must not enter A's home form
+        _match(14, 1, 1, home="A", away="C"),
+    ]
+
+    examples = build_training_examples(
+        matches, min_team_matches=1, extra_features={"venue"}
+    )
+    last = next(example for example in examples if example.source_key == "match:14")
+
+    assert last.features["home_venue_matches"] == 1.0
+    assert last.features["home_venue_goals_for_avg"] == 3.0
+    assert last.features["home_venue_points_avg"] == 3.0
+    assert last.features["away_venue_matches"] == 0.0
+    assert last.features["away_venue_goals_for_avg"] is None
+
+
+def test_h2h_is_scored_from_current_home_team_side():
+    matches = [
+        _match(0, 2, 0, home="A", away="B"),
+        _match(7, 1, 1, home="B", away="A"),
+        _match(14, 0, 0, home="B", away="A"),
+    ]
+
+    examples = build_training_examples(matches, min_team_matches=1, extra_features={"h2h"})
+    by_key = {example.source_key: example.features for example in examples}
+
+    # Match 7: B hosts A; the only prior meeting was a 2-0 loss for B.
+    assert by_key["match:7"]["h2h_matches"] == 1.0
+    assert by_key["match:7"]["h2h_home_points_avg"] == 0.0
+    assert by_key["match:7"]["h2h_home_goal_diff_avg"] == -2.0
+    # Match 14 sees both earlier meetings but never its own result.
+    assert by_key["match:14"]["h2h_matches"] == 2.0
+    assert by_key["match:14"]["h2h_home_points_avg"] == 0.5
+    assert by_key["match:14"]["h2h_home_goal_diff_avg"] == -1.0
+
+
+def test_extra_features_keep_the_same_example_rows():
+    matches = [
+        _match(day, day % 3, day % 2, home=home, away=away)
+        for day, (home, away) in enumerate(
+            [("A", "B"), ("C", "D"), ("B", "C"), ("D", "A"), ("A", "C"), ("B", "D")]
+        )
+    ]
+
+    baseline = build_training_examples(matches, min_team_matches=1)
+    candidate = build_training_examples(
+        matches, min_team_matches=1, extra_features={"venue", "h2h"}
+    )
+
+    assert [e.source_key for e in baseline] == [e.source_key for e in candidate]
+    for base, cand in zip(baseline, candidate, strict=True):
+        assert base.features.items() <= cand.features.items()
+
+
+def test_unknown_feature_group_is_rejected():
+    try:
+        build_training_examples([], extra_features={"xgboost"})
+    except ValueError as exc:
+        assert "xgboost" in str(exc)
     else:
         raise AssertionError("expected ValueError")

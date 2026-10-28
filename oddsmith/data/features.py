@@ -3,16 +3,25 @@
 Match statistics are valuable only as history. The current match's shots,
 corners, cards, and goals are appended *after* its feature vector is emitted, so
 no training example can see information that was unavailable before kickoff.
+
+Optional feature groups (``extra_features``) are off by default. The boosted and
+corner models train on every feature key present, so turning a group on changes
+the model; evaluate it as a challenger before making it a default.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from statistics import fmean
 
 from oddsmith.db import MatchObservation
+
+# venue: home team's home-only form and away team's away-only form.
+# h2h: previous meetings in the same league, from the current home team's side.
+FEATURE_GROUPS = frozenset({"venue", "h2h"})
 
 
 @dataclass(frozen=True)
@@ -84,6 +93,45 @@ def _team_features(
     return features
 
 
+def _venue_features(
+    prefix: str, venue_history: list[_TeamPerformance], window: int
+) -> dict[str, float | None]:
+    recent = venue_history[-window:]
+    features: dict[str, float | None] = {f"{prefix}_venue_matches": float(len(recent))}
+    for field in ("goals_for", "goals_against", "points"):
+        features[f"{prefix}_venue_{field}_avg"] = _mean(recent, field)
+    return features
+
+
+@dataclass(frozen=True)
+class _Meeting:
+    home_team: str
+    home_goals: int
+    away_goals: int
+
+
+def _h2h_features(
+    home_team: str, meetings: list[_Meeting], window: int
+) -> dict[str, float | None]:
+    recent = meetings[-window:]
+    if not recent:
+        return {"h2h_matches": 0.0, "h2h_home_points_avg": None, "h2h_home_goal_diff_avg": None}
+    points: list[int] = []
+    goal_diffs: list[int] = []
+    for meeting in recent:
+        # Past venues differ; always score from today's home team's side.
+        diff = meeting.home_goals - meeting.away_goals
+        if meeting.home_team != home_team:
+            diff = -diff
+        goal_diffs.append(diff)
+        points.append(3 if diff > 0 else 1 if diff == 0 else 0)
+    return {
+        "h2h_matches": float(len(recent)),
+        "h2h_home_points_avg": round(fmean(points), 4),
+        "h2h_home_goal_diff_avg": round(fmean(goal_diffs), 4),
+    }
+
+
 def _market_features(match: MatchObservation) -> dict[str, float | None]:
     odds = (match.close_home_odds, match.close_draw_odds, match.close_away_odds)
     if any(value is None for value in odds):
@@ -129,22 +177,46 @@ def build_training_examples(
     *,
     window: int = 8,
     min_team_matches: int = 3,
+    extra_features: Collection[str] = (),
+    h2h_window: int = 6,
 ) -> list[TrainingExample]:
-    """Build chronological rolling features, never using the current match's result."""
-    if window < 1 or min_team_matches < 0:
-        raise ValueError("window must be >= 1 and min_team_matches must be >= 0")
+    """Build chronological rolling features, never using the current match's result.
+
+    ``extra_features`` adds columns only; it never changes which matches become
+    examples, so a baseline and a candidate are scored on identical rows.
+    """
+    if window < 1 or min_team_matches < 0 or h2h_window < 1:
+        raise ValueError(
+            "window and h2h_window must be >= 1 and min_team_matches must be >= 0"
+        )
+    unknown = set(extra_features) - FEATURE_GROUPS
+    if unknown:
+        raise ValueError(
+            f"unknown feature groups {sorted(unknown)}; choose from {sorted(FEATURE_GROUPS)}"
+        )
 
     history: dict[tuple[str, str], list[_TeamPerformance]] = defaultdict(list)
+    home_venue: dict[tuple[str, str], list[_TeamPerformance]] = defaultdict(list)
+    away_venue: dict[tuple[str, str], list[_TeamPerformance]] = defaultdict(list)
+    meetings: dict[tuple[str, frozenset[str]], list[_Meeting]] = defaultdict(list)
     examples: list[TrainingExample] = []
     for match in sorted(matches, key=lambda row: row.kickoff_utc):
-        home_history = history[(match.league, match.home_team)]
-        away_history = history[(match.league, match.away_team)]
+        home_key = (match.league, match.home_team)
+        away_key = (match.league, match.away_team)
+        pair_key = (match.league, frozenset((match.home_team, match.away_team)))
+        home_history = history[home_key]
+        away_history = history[away_key]
         if len(home_history) >= min_team_matches and len(away_history) >= min_team_matches:
             features = {
                 **_team_features("home", home_history, match.kickoff_utc, window),
                 **_team_features("away", away_history, match.kickoff_utc, window),
                 **_market_features(match),
             }
+            if "venue" in extra_features:
+                features |= _venue_features("home", home_venue[home_key], window)
+                features |= _venue_features("away", away_venue[away_key], window)
+            if "h2h" in extra_features:
+                features |= _h2h_features(match.home_team, meetings[pair_key], h2h_window)
             total_corners = (
                 match.home_corners + match.away_corners
                 if match.home_corners is not None and match.away_corners is not None
@@ -176,6 +248,13 @@ def build_training_examples(
             )
 
         # Update only after emitting the current example: this is the leakage barrier.
-        home_history.append(_performance(match, home=True))
-        away_history.append(_performance(match, home=False))
+        home_performance = _performance(match, home=True)
+        away_performance = _performance(match, home=False)
+        home_history.append(home_performance)
+        away_history.append(away_performance)
+        home_venue[home_key].append(home_performance)
+        away_venue[away_key].append(away_performance)
+        meetings[pair_key].append(
+            _Meeting(match.home_team, match.home_goals, match.away_goals)
+        )
     return examples
