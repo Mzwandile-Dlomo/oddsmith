@@ -45,12 +45,6 @@ jobs:
             --lookback-days "${{ inputs.lookback_days || '3' }}" \
             --write
 
-      # Football-Data is quota-free and the only source of per-match corners and
-      # shots for every league game, not just the ones we priced. Without it,
-      # fixture insights describe a weeks-old "last 5". Imports are idempotent.
-      - name: Sync current-season Football-Data results
-        run: uv run python scripts/sync_football_data.py --from-season 2026 --to-season 2026 --write
-
       - name: Capture a fresh window of prices
         run: uv run python scripts/capture_odds.py --days 3
 

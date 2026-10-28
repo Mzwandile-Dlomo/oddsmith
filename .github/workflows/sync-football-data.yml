@@ -1,0 +1,44 @@
+# Daily: refresh the current season's Football-Data results. This is the only
+# source of per-match corners and shots for every league game, not just the
+# ones we priced, so fixture insights' "last 5" goes stale without it.
+# Football-Data is quota-free and imports are idempotent; it lives in its own
+# workflow so a Football-Data outage cannot block the odds capture.
+name: Sync Football-Data results (daily)
+
+on:
+  schedule:
+    # Before the 06:40 UTC odds/result sync and the 07:05 daily paper ticket.
+    # Football-Data usually posts weekend results by Monday night.
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Shared with the 6-hourly sync: both write match observations.
+  group: oddsmith-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dev
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Import current-season results for the five major leagues
+        run: |
+          # Seasons are named by their starting year and kick off in August, so
+          # until then we are still in the season that started last year.
+          year=$(date -u +%Y)
+          month=$(date -u +%-m)
+          season=$(( month >= 8 ? year : year - 1 ))
+          uv run python scripts/sync_football_data.py \
+            --from-season "$season" --to-season "$season" --write
