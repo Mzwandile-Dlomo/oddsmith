@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LineChart } from "lucide-react";
 import type { SlipView } from "@/lib/types";
 import { formatSignedCurrency } from "@/lib/utils";
@@ -49,7 +49,13 @@ function niceTicks(min: number, max: number, count = 4): number[] {
 
 function compact(value: number): string {
   const abs = Math.abs(value);
-  const text = abs >= 1000 ? `${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}K` : `${Math.round(abs)}`;
+  // Keep a decimal for steps like 2.5 rather than rounding them into a crooked axis.
+  const text =
+    abs >= 1000
+      ? `${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}K`
+      : Number.isInteger(abs)
+        ? `${abs}`
+        : abs.toFixed(1);
   return value < 0 ? `−${text}` : text;
 }
 
@@ -63,6 +69,11 @@ export function PnlChart({ slips, currency }: { slips: SlipView[]; currency: str
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
+  // Measure as the frame attaches; the observer's first callback can arrive later.
+  const attachFrame = useCallback((el: HTMLDivElement | null) => {
+    setFrame(el);
+    if (el) setWidth(el.getBoundingClientRect().width);
+  }, []);
 
   // Measured, not scaled through a viewBox, so text and 2px lines stay crisp.
   useEffect(() => {
@@ -106,7 +117,7 @@ export function PnlChart({ slips, currency }: { slips: SlipView[]; currency: str
 
   return (
     <div className="flex flex-col gap-3">
-      <div ref={setFrame} className="relative h-[220px] w-full">
+      <div ref={attachFrame} className="relative h-[220px] w-full">
         {width > 0 && (
           <svg
             width={width}
