@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { Fixture } from "@/lib/types";
 import { formatKickoffShort } from "@/lib/utils";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { FixtureInsights } from "./FixtureInsights";
 import { MarketPicker } from "./MarketPicker";
 import { ChevronDown, Clock, Trophy } from "lucide-react";
 
@@ -12,6 +14,7 @@ interface FixtureCardProps {
 
 export function FixtureCard({ fixture }: FixtureCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [view, setView] = useState<"markets" | "insights">("markets");
 
   return (
     <div className="group bg-surface transition-colors duration-150 hover:bg-canvas">
@@ -68,7 +71,21 @@ export function FixtureCard({ fixture }: FixtureCardProps) {
 
       {expanded && (
         <div className="border-t border-hairline bg-canvas/70 px-4 pb-4 pt-3">
-          <MarketPicker fixture={fixture} />
+          <SegmentedControl
+            label="Fixture view"
+            value={view}
+            onChange={setView}
+            segments={[
+              { value: "markets", label: "Markets" },
+              { value: "insights", label: "Form & stats" },
+            ]}
+            className="mb-3"
+          />
+          {view === "markets" ? (
+            <MarketPicker fixture={fixture} />
+          ) : (
+            <FixtureInsights fixture={fixture} />
+          )}
         </div>
       )}
     </div>

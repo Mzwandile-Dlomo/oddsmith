@@ -4,6 +4,7 @@ Routes:
   GET   /health                     - liveness probe
   GET   /fixtures                   - list soccer fixtures in a date window (merged providers)
   GET   /fixtures/{fixture_id}/markets - markets for one fixture
+  GET   /fixtures/{fixture_id}/insights - recent form, head-to-head, line hit rates
   GET   /acca/weekend               - auto-built value acca (long price, low strike rate)
   GET   /acca/daily                 - short-priced "banker" slip + Kelly stake sizing
   GET   /calendar                   - per-day fixture/slip/model summary (cache-only)
@@ -36,6 +37,7 @@ from oddsmith.db import (
     OddsSnapshot,
     OddsFixtureResult,
     PersonalPoolEntry,
+    ScheduledFixture,
     Slip,
     SlipLeg,
     get_session,
@@ -64,6 +66,7 @@ from oddsmith.odds_model.target_acca import (
 )
 from oddsmith.odds_model.value import ValuePick
 from oddsmith.history import team_stats
+from oddsmith.insights import MatchInsights, build_insights, load_insight_rows
 from oddsmith.matches import router as matches_router
 from oddsmith.slips import (
     LegInput,
@@ -307,6 +310,45 @@ async def fixture_markets(
         if fixture.id == fixture_id:
             return fixture
     raise HTTPException(status_code=404, detail="fixture not found in window")
+
+
+@app.get("/fixtures/{fixture_id}/insights", response_model=MatchInsights)
+def fixture_insights(
+    fixture_id: str,
+    last: int = Query(default=5, ge=3, le=20),
+    h2h: int = Query(default=10, ge=1, le=30),
+    session: Session = Depends(get_session),
+) -> MatchInsights:
+    """Recent form, head-to-head and totals-line hit rates for one fixture.
+
+    Cache/schedule reads only — this never spends provider quota.
+    """
+    fixture = find_cached_fixture(session, fixture_id)
+    if fixture is None:
+        scheduled = session.exec(
+            select(ScheduledFixture).where(ScheduledFixture.source_key == fixture_id)
+        ).first()
+        if scheduled is None:
+            raise HTTPException(status_code=404, detail="fixture not found")
+        fixture = Fixture(
+            id=scheduled.source_key,
+            home_team=scheduled.home_team,
+            away_team=scheduled.away_team,
+            kickoff_utc=scheduled.kickoff_utc,
+            league=scheduled.league_name,
+            provider=scheduled.source,
+        )
+    rows = load_insight_rows(session, [fixture.home_team, fixture.away_team])
+    return build_insights(
+        fixture_id=fixture.id,
+        home_team=fixture.home_team,
+        away_team=fixture.away_team,
+        kickoff_utc=fixture.kickoff_utc,
+        rows=rows,
+        markets=fixture.markets,
+        last=last,
+        h2h_limit=h2h,
+    )
 
 
 # --------------------------------------------------------------------------- #

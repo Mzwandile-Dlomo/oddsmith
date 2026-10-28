@@ -424,3 +424,82 @@ export interface CalendarView {
   staked: number;
   settled_slip_count: number;
 }
+
+export interface TeamMatch {
+  kickoff_utc: string;
+  league: string;
+  opponent: string;
+  venue: "H" | "A";
+  result: "W" | "D" | "L";
+  goals_for: number;
+  goals_against: number;
+  total_goals: number;
+  corners_for: number | null;
+  corners_against: number | null;
+  total_corners: number | null;
+  shots_for: number | null;
+  shots_against: number | null;
+  shots_on_target_for: number | null;
+  shots_on_target_against: number | null;
+}
+
+export interface LineCount {
+  key: string;
+  label: string;
+  hits: number;
+  /** Matches where the stat was recorded — unrecorded corners are not misses. */
+  sample: number;
+}
+
+export interface TeamAverages {
+  goals_for: number | null;
+  goals_against: number | null;
+  total_goals: number | null;
+  corners_for: number | null;
+  corners_against: number | null;
+  total_corners: number | null;
+  shots_for: number | null;
+  shots_on_target_for: number | null;
+  shots_on_target_against: number | null;
+}
+
+export interface TeamForm {
+  team: string;
+  club_key: string | null;
+  matches: TeamMatch[];
+  averages: TeamAverages;
+  team_lines: LineCount[];
+  total_lines: LineCount[];
+}
+
+export interface HeadToHead {
+  matches: TeamMatch[];
+  home_wins: number;
+  draws: number;
+  away_wins: number;
+  averages: TeamAverages;
+  total_lines: LineCount[];
+}
+
+export interface TrendRow {
+  key: string;
+  label: string;
+  home: LineCount;
+  away: LineCount;
+  head_to_head: LineCount;
+  pooled_hits: number;
+  pooled_sample: number;
+  support: number;
+  book_price: number | null;
+  book_implied_prob: number | null;
+}
+
+export interface MatchInsights {
+  fixture_id: string;
+  home: TeamForm;
+  away: TeamForm;
+  head_to_head: HeadToHead;
+  trends: TrendRow[];
+  data_through: string | null;
+  stale: boolean;
+}

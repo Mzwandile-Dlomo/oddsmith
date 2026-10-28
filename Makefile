@@ -61,6 +61,9 @@ run: db-up ## Run ONLY the API with autoreload (starts the DB first) on $(PORT)
 sync-football-data: ## Import Football-Data seasons 2012/13 through 2026/27
 	$(UV) python scripts/sync_football_data.py --from-season 2012 --to-season 2026 --write
 
+sync-football-data-current: ## Import only 2026/27 Football-Data results (fast; keeps insights fresh)
+	$(UV) python scripts/sync_football_data.py --from-season 2026 --to-season 2026 --write
+
 sync-fixtures: ## Import complete 2026/27 schedules for the five major leagues
 	$(UV) python scripts/sync_fixtures.py --season 2026 --write
 

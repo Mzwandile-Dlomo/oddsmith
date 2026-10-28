@@ -9,6 +9,7 @@ import type {
   HistoryMatch,
   LegCreate,
   MarketType,
+  MatchInsights,
   ModelReadinessView,
   PaperPerformanceView,
   PersonalPoolEntry,
@@ -56,6 +57,15 @@ export async function fetchFixtureMarkets(
   fixtureId: string
 ): Promise<Fixture> {
   return request<Fixture>(`/fixtures/${fixtureId}/markets`);
+}
+
+export async function fetchFixtureInsights(
+  fixtureId: string,
+  last = 5
+): Promise<MatchInsights> {
+  return request<MatchInsights>(
+    `/fixtures/${encodeURIComponent(fixtureId)}/insights?last=${last}`
+  );
 }
 
 export async function createSlip(body: SlipCreate): Promise<SlipView> {

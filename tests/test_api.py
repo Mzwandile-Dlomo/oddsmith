@@ -790,3 +790,58 @@ def test_fixtures_cached_only_does_not_call_a_provider(client, monkeypatch):
     # Without the flag the same window does reach the provider.
     assert client.get("/fixtures").status_code == 200
     assert called is True
+
+
+def test_fixture_insights_for_a_scheduled_fixture(client):
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            ScheduledFixture(
+                source_key="fixture_download:serie-a:2026:90",
+                source="fixture_download",
+                competition_key="serie-a",
+                league_id=135,
+                league_name="Serie A",
+                country="Italy",
+                season=2026,
+                match_number=90,
+                kickoff_utc=datetime(2026, 10, 28, 19, 45),
+                home_team="AC Milan",
+                away_team="Bologna",
+                raw_payload={},
+            )
+        )
+        for days, home, away, hg, ag in [
+            (3, "Milan", "Udinese", 0, 2),
+            (4, "Bologna", "Cagliari", 0, 2),
+            (200, "Bologna", "Milan", 1, 3),
+        ]:
+            session.add(
+                MatchObservation(
+                    source_key=f"test:{home}:{away}",
+                    source="football_data",
+                    league="SerieA",
+                    season=2026,
+                    kickoff_utc=datetime(2026, 10, 28, 19, 45) - timedelta(days=days),
+                    home_team=home,
+                    away_team=away,
+                    home_goals=hg,
+                    away_goals=ag,
+                    home_corners=5,
+                    away_corners=4,
+                    raw_payload={},
+                )
+            )
+        session.commit()
+
+    resp = client.get("/fixtures/fixture_download:serie-a:2026:90/insights")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["home"]["club_key"] == "milan"
+    assert [m["opponent"] for m in body["home"]["matches"]] == ["Udinese", "Bologna"]
+    assert body["head_to_head"]["home_wins"] == 1
+    assert body["stale"] is False
+    assert {row["key"] for row in body["trends"]} >= {"goals_over_1.5", "corners_under_10.5"}
+
+
+def test_fixture_insights_unknown_fixture_is_404(client):
+    assert client.get("/fixtures/nope/insights").status_code == 404
