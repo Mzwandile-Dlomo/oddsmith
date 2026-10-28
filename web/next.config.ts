@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/today", destination: "/", permanent: false },
-      { source: "/build", destination: "/matches", permanent: false },
+      { source: "/build", destination: "/", permanent: false },
       { source: "/calendar", destination: "/matches/calendar", permanent: false },
       { source: "/calendar/:date", destination: "/matches/calendar/:date", permanent: false },
       { source: "/generate", destination: "/picks?tab=value", permanent: false },

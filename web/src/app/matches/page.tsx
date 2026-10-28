@@ -1,18 +1,6 @@
-import { MatchesTabs } from "@/components/matches/MatchesTabs";
-import { MatchesView } from "@/components/matches/MatchesView";
-import { PageHeader } from "@/components/shell/PageHeader";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Matches — Oddsmith" };
-
-export default function MatchesPage() {
-  return (
-    <>
-      <PageHeader
-        title="Matches"
-        description="Upcoming fixtures with bookmaker and model prices. Open a match for its full page."
-        actions={<MatchesTabs />}
-      />
-      <MatchesView />
-    </>
-  );
+// The day feed on the home page replaced the old fixture list.
+export default function MatchesIndex() {
+  redirect("/");
 }

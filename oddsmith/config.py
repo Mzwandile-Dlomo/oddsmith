@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     api_football_base_url: str = "https://v3.football.api-sports.io"
     api_football_use_rapidapi: bool = False
 
+    # --- Claude (match read write-ups) ---
+    # Without a key, match pages still show every computed angle and number;
+    # only the written summary is missing.
+    anthropic_api_key: str | None = Field(default=None, repr=False)
+    match_read_model: str = "claude-opus-5-5"
+
     # Optional additional trusted root for corporate TLS inspection. This is
     # added to the normal public CA set; verification is never disabled.
     football_data_ca_bundle: str | None = None
@@ -49,10 +55,27 @@ class Settings(BaseSettings):
 
     # --- Fixtures DB cache (protects provider quota) ---
     # Serve fixtures from Postgres; only re-fetch from providers when the cached
-    # window is older than this TTL (default 6h). API-Football charges 1 request
-    # per fixture's odds, so cap how many fixtures we pull odds for per refresh.
+    # window is older than this TTL (default 6h). The cap trims what one refresh
+    # stores, after the providers have already been paid for those odds, so it
+    # sits above a busy weekend across every competition in DEFAULT_SOCCER_SPORTS.
     fixtures_cache_ttl_seconds: int = 21600
-    max_fixtures_per_refresh: int = 40
+    max_fixtures_per_refresh: int = 400
+
+    # --- Provider quota guard (oddsmith/quota.py) ---
+    # Every metered call reserves its cost against a per-UTC-day ledger in the
+    # DB before it is sent, so the app, scripts and scheduled jobs share one
+    # budget. A call is also refused when the provider's own remaining count
+    # would fall below the floor.
+    # API-Football free plan: 100 requests/day, resets at 00:00 UTC.
+    api_football_daily_budget: int = 90
+    api_football_floor: int = 5
+    # Odds requests per refresh; the rest of the day's budget stays free for
+    # match pages and the results sync.
+    api_football_odds_per_refresh: int = 8
+    # The Odds API free plan: 500 credits/month. 15/day x 31 days = 465, so the
+    # month cannot run dry even if every day spends its full allowance.
+    the_odds_api_daily_budget: int = 15
+    the_odds_api_floor: int = 10
 
     # --- Odds model tuning (fit cross-league on EPL/Bundesliga/LaLiga/SerieA) ---
     # rho: Dixon-Coles low-score correction; decay: recency weighting per match.

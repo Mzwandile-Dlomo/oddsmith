@@ -16,6 +16,8 @@ Routes:
 
 from __future__ import annotations
 
+import time as time_module
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, date as date_type, datetime, time, timedelta
@@ -66,7 +68,9 @@ from oddsmith.odds_model.target_acca import (
 )
 from oddsmith.odds_model.value import ValuePick
 from oddsmith.history import team_stats
-from oddsmith.insights import MatchInsights, build_insights, load_insight_rows
+from oddsmith.insights import MatchInsights, build_insights, club_key, load_insight_rows
+from oddsmith.match_read import MatchReadView, get_match_read
+from oddsmith.research import ResearchDay, research_card
 from oddsmith.matches import router as matches_router
 from oddsmith.slips import (
     LegInput,
@@ -312,6 +316,26 @@ async def fixture_markets(
     raise HTTPException(status_code=404, detail="fixture not found in window")
 
 
+def _stored_fixture(session: Session, fixture_id: str) -> Fixture:
+    """A fixture from the odds cache, else the schedule; never a provider call."""
+    fixture = find_cached_fixture(session, fixture_id)
+    if fixture is not None:
+        return fixture
+    scheduled = session.exec(
+        select(ScheduledFixture).where(ScheduledFixture.source_key == fixture_id)
+    ).first()
+    if scheduled is None:
+        raise HTTPException(status_code=404, detail="fixture not found")
+    return Fixture(
+        id=scheduled.source_key,
+        home_team=scheduled.home_team,
+        away_team=scheduled.away_team,
+        kickoff_utc=scheduled.kickoff_utc,
+        league=scheduled.league_name,
+        provider=scheduled.source,
+    )
+
+
 @app.get("/fixtures/{fixture_id}/insights", response_model=MatchInsights)
 def fixture_insights(
     fixture_id: str,
@@ -323,21 +347,7 @@ def fixture_insights(
 
     Cache/schedule reads only — this never spends provider quota.
     """
-    fixture = find_cached_fixture(session, fixture_id)
-    if fixture is None:
-        scheduled = session.exec(
-            select(ScheduledFixture).where(ScheduledFixture.source_key == fixture_id)
-        ).first()
-        if scheduled is None:
-            raise HTTPException(status_code=404, detail="fixture not found")
-        fixture = Fixture(
-            id=scheduled.source_key,
-            home_team=scheduled.home_team,
-            away_team=scheduled.away_team,
-            kickoff_utc=scheduled.kickoff_utc,
-            league=scheduled.league_name,
-            provider=scheduled.source,
-        )
+    fixture = _stored_fixture(session, fixture_id)
     rows = load_insight_rows(session, [fixture.home_team, fixture.away_team])
     return build_insights(
         fixture_id=fixture.id,
@@ -348,6 +358,106 @@ def fixture_insights(
         markets=fixture.markets,
         last=last,
         h2h_limit=h2h,
+    )
+
+
+# Stored fixtures and results change only when the sync jobs run (every few
+# hours), so a day's research is served from memory for a few minutes.
+RESEARCH_CACHE_SECONDS = 300
+_research_cache: dict[tuple[str, str], tuple[float, ResearchDay]] = {}
+
+
+def _aware_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+@app.get("/research/day", response_model=ResearchDay)
+def research_day(
+    date_from: datetime = Query(...),
+    date_to: datetime = Query(...),
+    session: Session = Depends(get_session),
+) -> ResearchDay:
+    """Every stored fixture in the window with its form and graded angles.
+
+    Reads the odds cache and the schedule only, so browsing days never spends
+    provider quota. History for all clubs playing is loaded in one pass.
+    """
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be after date_from")
+    cache_key = (date_from.isoformat(), date_to.isoformat())
+    cached = _research_cache.get(cache_key)
+    if cached and time_module.monotonic() - cached[0] < RESEARCH_CACHE_SECONDS:
+        return cached[1]
+
+    fixtures = _merge_with_schedule(
+        read_cached_fixtures(session, date_from=date_from, date_to=date_to),
+        read_scheduled_fixtures(session, date_from=date_from, date_to=date_to),
+    )
+    # Both reads return whole UTC days; keep only the requested instants, so a
+    # local day (e.g. SAST) does not pick up the previous UTC evening's matches.
+    window_from, window_to = _aware_utc(date_from), _aware_utc(date_to)
+    fixtures = [f for f in fixtures if window_from <= _aware_utc(f.kickoff_utc) <= window_to]
+    rows = load_insight_rows(
+        session, {name for f in fixtures for name in (f.home_team, f.away_team)}
+    )
+    # Each fixture only needs its two clubs' rows. Club resolution is exact-key,
+    # so this subset yields the same insights as all rows at ~1/N of the work.
+    by_club: dict[str, list[MatchObservation]] = defaultdict(list)
+    for row in rows:
+        by_club[club_key(row.home_team)].append(row)
+        by_club[club_key(row.away_team)].append(row)
+    cards = [
+        research_card(
+            fixture_id=f.id,
+            league=f.league,
+            kickoff_utc=f.kickoff_utc,
+            priced=bool(f.markets),
+            provider=f.provider,
+            insights=build_insights(
+                fixture_id=f.id,
+                home_team=f.home_team,
+                away_team=f.away_team,
+                kickoff_utc=f.kickoff_utc,
+                rows=by_club[club_key(f.home_team)] + by_club[club_key(f.away_team)],
+                markets=f.markets,
+            ),
+        )
+        for f in sorted(fixtures, key=lambda f: f.kickoff_utc)
+    ]
+    day = ResearchDay(
+        date_from=date_from,
+        date_to=date_to,
+        leagues=sorted({c.league for c in cards if c.league}),
+        cards=cards,
+    )
+    _research_cache[cache_key] = (time_module.monotonic(), day)
+    return day
+
+
+@app.get("/fixtures/{fixture_id}/read", response_model=MatchReadView)
+async def fixture_read(
+    fixture_id: str,
+    session: Session = Depends(get_session),
+) -> MatchReadView:
+    """Computed angles plus Claude's cached written read of them."""
+    fixture = _stored_fixture(session, fixture_id)
+    insights = build_insights(
+        fixture_id=fixture.id,
+        home_team=fixture.home_team,
+        away_team=fixture.away_team,
+        kickoff_utc=fixture.kickoff_utc,
+        rows=load_insight_rows(session, [fixture.home_team, fixture.away_team]),
+        markets=fixture.markets,
+    )
+    settings = get_settings()
+    return await get_match_read(
+        session,
+        fixture_id=fixture.id,
+        league=fixture.league,
+        kickoff_utc=fixture.kickoff_utc,
+        insights=insights,
+        api_key=settings.anthropic_api_key,
+        model=settings.match_read_model,
     )
 
 

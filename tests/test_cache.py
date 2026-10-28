@@ -304,3 +304,21 @@ async def test_only_missing_days_are_fetched(session, settings, monkeypatch):
     assert calls["n"] == 2  # one more fetch, for the missing day only
     # The fetch should have covered only day 2's range, so exactly 2 fixtures total.
     assert len(result) == 2
+
+
+async def test_refresh_without_odds_keeps_stored_markets(session, settings, monkeypatch):
+    _patch_settings(monkeypatch, settings)
+    await cache_module.get_cached_fixtures(session, [CountingProvider()], **WINDOW)
+
+    class NoOddsProvider(CountingProvider):
+        async def list_fixtures(self, *, date_from, date_to, markets=None):
+            fixtures = await super().list_fixtures(date_from=date_from, date_to=date_to)
+            for fixture in fixtures:
+                fixture.markets = []
+            return fixtures
+
+    fixtures = await cache_module.get_cached_fixtures(
+        session, [NoOddsProvider()], **WINDOW, force_refresh=True
+    )
+
+    assert fixtures[0].markets, "a budget-skipped refresh must not wipe stored odds"

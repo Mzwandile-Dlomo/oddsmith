@@ -10,6 +10,12 @@ Endpoints used:
   GET /odds?fixture={id}
     -> response[].bookmakers[].bets[]{id,name,values[]{value,odd}}
 
+Quota: the free plan allows 100 requests a day and 10 a minute, and every
+request below costs one. ``/fixtures?date=`` returns the whole world's card
+(~500 matches) in one request, but odds cost one request *per fixture* — so we
+keep only our tracked competitions and price a few upcoming ones per refresh.
+Every call reserves its cost with the shared ``QuotaGuard`` first.
+
 Bet ids we map:
   1 Match Winner (1X2)        -> MATCH_WINNER  (Home / Draw / Away)
   8 Both Teams Score          -> BTTS          (Yes / No)
@@ -20,13 +26,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
+from oddsmith.competitions import BY_ID, COMPETITIONS
 from oddsmith.config import Settings, get_settings
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider, ProviderError
+from oddsmith.quota import QuotaExceeded, QuotaGuard, api_football_policy
 
 BET_MATCH_WINNER = 1
 BET_BTTS = 8
@@ -40,6 +48,10 @@ _BET_ID_TO_TYPE = {
 
 _OVER_UNDER_RE = re.compile(r"^(Over|Under)\s+([0-9]+(?:\.[0-9]+)?)$", re.IGNORECASE)
 _COMPLETED_STATUSES = {"FT", "AET", "PEN"}
+
+# The Odds API does not price these, so their odds requests go first.
+_ODDS_FIRST = {"sa-premiership", "copa-del-rey", "coppa-italia", "coupe-de-france", "fa-cup"}
+_COMPETITION_ORDER = {competition.api_football_id: i for i, competition in enumerate(COMPETITIONS)}
 
 
 @dataclass(frozen=True)
@@ -81,9 +93,33 @@ class ApiFootballProvider(OddsProvider):
         self,
         settings: Settings | None = None,
         client: httpx.AsyncClient | None = None,
+        guard: QuotaGuard | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._client = client
+        self._guard = guard
+
+    @property
+    def guard(self) -> QuotaGuard:
+        if self._guard is None:
+            self._guard = QuotaGuard(
+                api_football_policy(self._settings), database_url=self._settings.database_url
+            )
+        return self._guard
+
+    async def _get(
+        self,
+        client: httpx.AsyncClient,
+        path: str,
+        params: dict[str, object],
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        """Send one metered request, after reserving it with the quota guard."""
+        headers = headers or self._headers()
+        self.guard.require(1)
+        response = await client.get(path, headers=headers, params=params)
+        self.guard.observe(_header_integer(response, "x-ratelimit-requests-remaining"))
+        return response
 
     def _headers(self) -> dict[str, str]:
         key = self._settings.api_football_key
@@ -114,19 +150,40 @@ class ApiFootballProvider(OddsProvider):
         headers = self._headers()
         try:
             fixtures: list[Fixture] = []
+            order: dict[str, tuple[int, int]] = {}
             for day in _days_in_range(date_from, date_to):
-                resp = await client.get(
-                    "/fixtures",
-                    headers=headers,
-                    params={"date": day.isoformat(), "timezone": "UTC"},
-                )
+                try:
+                    resp = await self._get(
+                        client,
+                        "/fixtures",
+                        {"date": day.isoformat(), "timezone": "UTC"},
+                        headers,
+                    )
+                except QuotaExceeded:
+                    if not fixtures:
+                        raise
+                    break  # keep the days we already paid for
                 resp.raise_for_status()
-                entries = resp.json().get("response", [])
-                fixtures.extend(self._parse_fixture(e) for e in entries)
+                for entry in resp.json().get("response", []):
+                    league_id = entry.get("league", {}).get("id")
+                    if league_id not in BY_ID:
+                        continue
+                    fixture = self._parse_fixture(entry)
+                    fixtures.append(fixture)
+                    first = 0 if BY_ID[league_id].key in _ODDS_FIRST else 1
+                    order[fixture.id] = (first, _COMPETITION_ORDER[league_id])
 
-            for fixture in fixtures:
+            now = datetime.now(UTC)
+            upcoming = sorted(
+                (f for f in fixtures if f.kickoff_utc > now),
+                key=lambda f: (*order[f.id], f.kickoff_utc),
+            )
+            for fixture in upcoming[: self._settings.api_football_odds_per_refresh]:
                 raw_id = fixture.id.split(":", 1)[1]
-                fixture.markets = await self._fetch_markets(client, headers, raw_id)
+                try:
+                    fixture.markets = await self._fetch_markets(client, headers, raw_id)
+                except QuotaExceeded:
+                    break
         except httpx.HTTPError as exc:  # pragma: no cover - network failure path
             raise ProviderError(f"api-football request failed: {exc}") from exc
         finally:
@@ -151,10 +208,8 @@ class ApiFootballProvider(OddsProvider):
         client = await self._get_client()
         owns_client = self._client is None
         try:
-            response = await client.get(
-                "/fixtures",
-                headers=self._headers(),
-                params={"date": day.isoformat(), "timezone": "UTC"},
+            response = await self._get(
+                client, "/fixtures", {"date": day.isoformat(), "timezone": "UTC"}
             )
             response.raise_for_status()
             results = [
@@ -196,7 +251,7 @@ class ApiFootballProvider(OddsProvider):
         client = await self._get_client()
         owns_client = self._client is None
         try:
-            response = await client.get(endpoint, headers=self._headers(), params=params)
+            response = await self._get(client, endpoint, params)
             response.raise_for_status()
             body = response.json()
             errors = body.get("errors")
@@ -216,10 +271,8 @@ class ApiFootballProvider(OddsProvider):
         client = await self._get_client()
         owns_client = self._client is None
         try:
-            response = await client.get(
-                "/fixtures/statistics",
-                headers=self._headers(),
-                params={"fixture": result.fixture_id},
+            response = await self._get(
+                client, "/fixtures/statistics", {"fixture": result.fixture_id}
             )
             response.raise_for_status()
             by_team = {
@@ -280,7 +333,7 @@ class ApiFootballProvider(OddsProvider):
     async def _fetch_markets(
         self, client: httpx.AsyncClient, headers: dict[str, str], raw_fixture_id: str
     ) -> list[Market]:
-        resp = await client.get("/odds", headers=headers, params={"fixture": raw_fixture_id})
+        resp = await self._get(client, "/odds", {"fixture": raw_fixture_id}, headers)
         resp.raise_for_status()
         response = resp.json().get("response", [])
         if not response:
@@ -379,8 +432,9 @@ def _quota(response: httpx.Response) -> ApiFootballQuota:
 
 
 # The Free plan rejects from/to ranges (and the `next` param), but `date=` for a
-# single day works unrestricted. We scan day-by-day, capped so a wide window
-# cannot exhaust the tight daily request quota.
+# single day works for the current season (odds by league/season do not; only
+# per-fixture odds do). We scan day-by-day, capped so a wide window cannot
+# exhaust the tight daily request quota.
 _MAX_DAYS = 7
 
 

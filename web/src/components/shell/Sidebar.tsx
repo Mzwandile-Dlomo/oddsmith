@@ -32,8 +32,8 @@ interface NavItem {
  * browse, and detail pages (a match, a team) hang off the list that leads to them.
  */
 const NAV: NavItem[] = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, hint: "Your numbers at a glance" },
-  { href: "/matches", label: "Matches", icon: CalendarDays, hint: "Fixtures, prices and match pages" },
+  { href: "/", label: "Matches", icon: CalendarDays, hint: "Each day's matches with form, trends and a written read" },
+  { href: "/overview", label: "Overview", icon: LayoutDashboard, hint: "Your numbers at a glance" },
   { href: "/picks", label: "Picks", icon: Sparkles, hint: "Daily slip, value acca and pool" },
   { href: "/slips", label: "Slips", icon: ListChecks, hint: "Open bets and settling" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, hint: "Profit, hit rate and paper tracking" },
@@ -43,7 +43,8 @@ const NAV: NavItem[] = [
 ];
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
+  // Match pages and the calendar hang off the home feed.
+  if (href === "/") return pathname === "/" || pathname.startsWith("/matches");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

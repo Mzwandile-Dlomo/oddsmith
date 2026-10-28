@@ -15,10 +15,16 @@ Market keys we map:
 
 BTTS and corner totals use a separately budgeted per-event collector because
 they are not available through the lower-cost bulk featured-market endpoint.
+
+Quota: ``/sports`` and ``/events`` are free; an ``/odds`` call costs
+markets x regions credits. ``list_fixtures`` asks ``/events`` which sports have
+matches in the window and only pays for those, each reserved with the shared
+``QuotaGuard`` first.
 """
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -27,9 +33,12 @@ import httpx
 from oddsmith.config import Settings, get_settings
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider, ProviderError
+from oddsmith.quota import QuotaExceeded, QuotaGuard, the_odds_api_policy
 
-# Soccer competitions to query. The Odds API exposes soccer under many keys;
-# these cover the major European leagues. Extend as needed.
+# Soccer competitions to query, in priority order: the refresh cap keeps the
+# first fixtures fetched, so the leagues the model is trained on lead. Keys are
+# the in-season men's competitions from GET /v4/sports (checked 2026-10-28).
+# A sport with no events in the window returns an empty list or a 404.
 DEFAULT_SOCCER_SPORTS = (
     "soccer_epl",
     "soccer_spain_la_liga",
@@ -41,6 +50,49 @@ DEFAULT_SOCCER_SPORTS = (
     "soccer_brazil_campeonato",
     "soccer_argentina_primera_division",
     "soccer_usa_mls",
+    # UEFA and domestic cups
+    "soccer_uefa_europa_conference_league",
+    "soccer_uefa_nations_league",
+    "soccer_england_efl_cup",
+    "soccer_germany_dfb_pokal",
+    # Second tiers of the big five
+    "soccer_efl_champ",
+    "soccer_england_league1",
+    "soccer_england_league2",
+    "soccer_spain_segunda_division",
+    "soccer_italy_serie_b",
+    "soccer_germany_bundesliga2",
+    "soccer_germany_liga3",
+    "soccer_france_ligue_two",
+    # Rest of Europe
+    "soccer_netherlands_eredivisie",
+    "soccer_portugal_primeira_liga",
+    "soccer_belgium_first_div",
+    "soccer_spl",
+    "soccer_turkey_super_league",
+    "soccer_austria_bundesliga",
+    "soccer_switzerland_superleague",
+    "soccer_denmark_superliga",
+    "soccer_greece_super_league",
+    "soccer_poland_ekstraklasa",
+    "soccer_norway_eliteserien",
+    "soccer_sweden_allsvenskan",
+    "soccer_sweden_superettan",
+    "soccer_finland_veikkausliiga",
+    "soccer_league_of_ireland",
+    "soccer_russia_premier_league",
+    # Americas
+    "soccer_conmebol_copa_libertadores",
+    "soccer_conmebol_copa_sudamericana",
+    "soccer_brazil_serie_b",
+    "soccer_chile_campeonato",
+    "soccer_mexico_ligamx",
+    # Asia-Pacific and Middle East
+    "soccer_saudi_arabia_pro_league",
+    "soccer_japan_j_league",
+    "soccer_korea_kleague1",
+    "soccer_china_superleague",
+    "soccer_australia_aleague",
 )
 
 _FEATURED_MARKET_KEY_TO_TYPE = {
@@ -81,10 +133,58 @@ class TheOddsApiProvider(OddsProvider):
         settings: Settings | None = None,
         client: httpx.AsyncClient | None = None,
         sports: tuple[str, ...] = DEFAULT_SOCCER_SPORTS,
+        guard: QuotaGuard | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._client = client
         self._sports = sports
+        self._guard = guard
+
+    @property
+    def guard(self) -> QuotaGuard:
+        if self._guard is None:
+            self._guard = QuotaGuard(
+                the_odds_api_policy(self._settings), database_url=self._settings.database_url
+            )
+        return self._guard
+
+    def _region_count(self) -> int:
+        regions = [r for r in self._settings.the_odds_api_regions.split(",") if r]
+        return max(len(regions), 1)
+
+    def _observe(self, response: httpx.Response) -> None:
+        remaining = response.headers.get("x-requests-remaining")
+        if remaining is not None:
+            self.guard.observe(int(float(remaining)))
+
+    async def _sports_with_events(
+        self,
+        client: httpx.AsyncClient,
+        key: str,
+        date_from: datetime,
+        date_to: datetime,
+    ) -> list[str]:
+        """Which sports have a match in the window, via the free /events endpoint."""
+        limit = asyncio.Semaphore(8)
+
+        async def has_events(sport: str) -> bool:
+            async with limit:
+                response = await client.get(
+                    f"/sports/{sport}/events",
+                    params={
+                        "apiKey": key,
+                        "dateFormat": "iso",
+                        "commenceTimeFrom": _iso_z(date_from),
+                        "commenceTimeTo": _iso_z(date_to),
+                    },
+                )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return bool(response.json())
+
+        found = await asyncio.gather(*(has_events(sport) for sport in self._sports))
+        return [sport for sport, ok in zip(self._sports, found, strict=True) if ok]
 
     def _require_key(self) -> str:
         key = self._settings.the_odds_api_key
@@ -129,10 +229,7 @@ class TheOddsApiProvider(OddsProvider):
         market_keys = [
             _TYPE_TO_ADDITIONAL_MARKET_KEY[market] for market in dict.fromkeys(markets)
         ]
-        region_count = len(
-            [region for region in self._settings.the_odds_api_regions.split(",") if region]
-        )
-        maximum_per_event = len(market_keys) * max(region_count, 1)
+        maximum_per_event = len(market_keys) * self._region_count()
         event_limit = min(max_events, max_credits // maximum_per_event)
         if event_limit < 1:
             raise ValueError(
@@ -164,6 +261,8 @@ class TheOddsApiProvider(OddsProvider):
 
             discovered.sort(key=lambda item: item[1]["commence_time"])
             for sport, event in discovered[:event_limit]:
+                if not self.guard.reserve(maximum_per_event):
+                    break
                 response = await client.get(
                     f"/sports/{sport}/events/{event['id']}/odds",
                     params={
@@ -174,6 +273,7 @@ class TheOddsApiProvider(OddsProvider):
                         "dateFormat": "iso",
                     },
                 )
+                self._observe(response)
                 if response.status_code == 404:
                     continue
                 response.raise_for_status()
@@ -217,12 +317,22 @@ class TheOddsApiProvider(OddsProvider):
             "commenceTimeTo": _iso_z(date_to),
         }
 
+        cost = len(params["markets"].split(",")) * self._region_count()
+
         client = await self._get_client()
         owns_client = self._client is None
         fixtures: list[Fixture] = []
         try:
-            for sport in self._sports:
+            sports = await self._sports_with_events(client, key, date_from, date_to)
+            for i, sport in enumerate(sports):
+                if not self.guard.reserve(cost):
+                    if i == 0:
+                        raise QuotaExceeded(
+                            "the_odds_api: daily credit budget reached; serving stored data only"
+                        )
+                    break  # sports are in priority order; keep what we paid for
                 resp = await client.get(f"/sports/{sport}/odds", params=params)
+                self._observe(resp)
                 if resp.status_code == 404:
                     # Sport out of season / no events in window.
                     continue

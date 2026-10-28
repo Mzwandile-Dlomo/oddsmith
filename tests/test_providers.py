@@ -59,10 +59,13 @@ async def test_the_odds_api_parses_h2h_and_totals(odds_settings):
             }
         ],
     }
-    respx.get(url__regex=r".*/sports/.*/odds").mock(
-        side_effect=lambda request: httpx.Response(200, json=[event])
+    respx.get(url__regex=r".*/sports/[a-z0-9_]+/events(\?.*)?$").mock(
+        side_effect=lambda request: httpx.Response(200, json=[{"id": "abc123"}])
         if "soccer_epl" in str(request.url)
         else httpx.Response(200, json=[])
+    )
+    odds_route = respx.get(url__regex=r".*/sports/.*/odds").mock(
+        return_value=httpx.Response(200, json=[event])
     )
 
     async with httpx.AsyncClient(base_url=odds_settings.the_odds_api_base_url) as client:
@@ -72,6 +75,8 @@ async def test_the_odds_api_parses_h2h_and_totals(odds_settings):
             date_to=datetime(2026, 7, 26, tzinfo=UTC),
         )
 
+    # Only the one sport with events in the window is paid for.
+    assert odds_route.call_count == 1
     assert len(fixtures) == 1
     fx = fixtures[0]
     assert fx.id == "the_odds_api:abc123"
@@ -177,9 +182,9 @@ async def test_api_football_parses_fixtures_and_bets(odds_settings):
     fixtures_payload = {
         "response": [
             {
-                "fixture": {"id": 555, "date": "2026-07-25T15:00:00+00:00"},
+                "fixture": {"id": 555, "date": "2099-07-25T15:00:00+00:00"},
                 "teams": {"home": {"name": "Arsenal"}, "away": {"name": "Chelsea"}},
-                "league": {"name": "Premier League"},
+                "league": {"id": 39, "name": "Premier League"},
             }
         ]
     }
@@ -229,13 +234,13 @@ async def test_api_football_parses_fixtures_and_bets(odds_settings):
     async with httpx.AsyncClient(base_url=odds_settings.api_football_base_url) as client:
         provider = ApiFootballProvider(settings=odds_settings, client=client)
         fixtures = await provider.list_fixtures(
-            date_from=datetime(2026, 7, 25, tzinfo=UTC),
-            date_to=datetime(2026, 7, 25, tzinfo=UTC),
+            date_from=datetime(2099, 7, 25, tzinfo=UTC),
+            date_to=datetime(2099, 7, 25, tzinfo=UTC),
         )
 
     # Free-plan compatible: fixtures are queried per-day via `date=`, not from/to.
     called_url = str(fixtures_route.calls.last.request.url)
-    assert "date=2026-07-25" in called_url
+    assert "date=2099-07-25" in called_url
     assert "from=" not in called_url
 
     assert len(fixtures) == 1

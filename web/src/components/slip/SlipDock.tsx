@@ -47,12 +47,17 @@ export function SlipDock({ children }: { children: React.ReactNode }) {
       {/*
         Two columns from `lg` where the slip can sit beside the content. Below
         that the panel is a bottom sheet rather than a block stacked underneath
-        a long list, where a selection would scroll out of sight.
+        a long list, where a selection would scroll out of sight. The column only
+        takes room once something is in the slip, so research pages stay full width.
       */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div
+        className={`grid grid-cols-1 gap-6 ${
+          legs.length > 0 ? "lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]" : ""
+        }`}
+      >
         <div className="min-w-0">{children}</div>
 
-        <div className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
+        <div className={`hidden ${legs.length > 0 ? "lg:block" : ""} lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain`}>
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-panel">
             <SlipPanel onSlipSaved={handleSlipSaved} />
           </div>

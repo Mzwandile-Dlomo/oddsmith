@@ -11,10 +11,12 @@ import type {
   LegCreate,
   MarketType,
   MatchInsights,
+  MatchReadView,
   ModelReadinessView,
   PaperPerformanceView,
   PersonalPoolEntry,
   PersonalPoolView,
+  ResearchDay,
   SlipCreate,
   SlipUpdate,
   SlipView,
@@ -212,4 +214,15 @@ export async function fetchLeagueTable(league: string, season?: number): Promise
   const params = new URLSearchParams({ league });
   if (season !== undefined) params.set("season", String(season));
   return request<LeagueTableView>(`/history/table?${params.toString()}`);
+}
+
+/** Every stored fixture between two instants (a local day), with form and graded angles. */
+export async function fetchResearchDay(fromIso: string, toIso: string): Promise<ResearchDay> {
+  const params = new URLSearchParams({ date_from: fromIso, date_to: toIso });
+  return request<ResearchDay>(`/research/day?${params.toString()}`);
+}
+
+/** Computed angles plus Claude's cached written read for one match. */
+export async function fetchMatchRead(fixtureId: string): Promise<MatchReadView> {
+  return request<MatchReadView>(`/fixtures/${encodeURIComponent(fixtureId)}/read`);
 }

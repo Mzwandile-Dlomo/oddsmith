@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, Session, SQLModel, create_engine
 
 from oddsmith.config import get_settings
@@ -268,6 +268,24 @@ class ModelEvaluationSnapshot(SQLModel, table=True):
     payload: dict = Field(sa_column=Column(JSON))
 
 
+class MatchRead(SQLModel, table=True):
+    """A cached written read for one fixture.
+
+    ``data_key`` fingerprints the evidence the read was written from (latest
+    stored match, prices, angles), so a read is rewritten only when new results
+    or odds arrive, never on every page view.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    fixture_id: str = Field(index=True)
+    data_key: str = Field(index=True)
+    model: str
+    angle_key: str
+    summary: str
+    match_read: str
+    created_at: datetime = Field(default_factory=_now)
+
+
 class CornerEvaluationSnapshot(SQLModel, table=True):
     """Immutable corner count evaluation artifact displayed by Model Lab."""
 
@@ -276,6 +294,23 @@ class CornerEvaluationSnapshot(SQLModel, table=True):
     generated_at: datetime = Field(index=True)
     dataset_matches: int
     payload: dict = Field(sa_column=Column(JSON))
+
+
+class ProviderUsage(SQLModel, table=True):
+    """Metered provider spend for one UTC day (see ``oddsmith.quota``).
+
+    ``used`` is what we reserved before sending; ``provider_remaining`` is the
+    last count the provider itself reported in its response headers.
+    """
+
+    __table_args__ = (UniqueConstraint("provider", "day"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    provider: str = Field(index=True)
+    day: date = Field(index=True)
+    used: int = 0
+    provider_remaining: int | None = None
+    updated_at: datetime = Field(default_factory=_now)
 
 
 _engine = None

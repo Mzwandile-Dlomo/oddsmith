@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 import { CalendarDays, List } from "lucide-react";
 
 const TABS = [
-  { href: "/matches", label: "List", icon: List },
+  { href: "/", label: "Day", icon: List },
   { href: "/matches/calendar", label: "Calendar", icon: CalendarDays },
 ];
 
-/** Two views of the same fixtures: the next few days as a list, or by month. */
+/** Two views of the same fixtures: one day's research cards, or the month at a glance. */
 export function MatchesTabs() {
   const pathname = usePathname();
   const calendar = pathname.startsWith("/matches/calendar");

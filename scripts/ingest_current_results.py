@@ -29,6 +29,7 @@ from oddsmith.db import (
 )
 from oddsmith.slips import LegResult
 from oddsmith.providers.api_football import ApiFootballProvider, ApiFootballResult
+from oddsmith.quota import QuotaExceeded
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -158,6 +159,9 @@ async def _run() -> int:
         requests += 1
         try:
             results, quota = await provider.completed_results(day)
+        except QuotaExceeded as exc:
+            print(f"Stopping early: {exc}")
+            break
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 429:
                 raise
@@ -192,6 +196,8 @@ async def _run() -> int:
                 stats_requests += 1
                 try:
                     result, quota = await provider.add_result_statistics(result)
+                except QuotaExceeded:
+                    minute_remaining = 0  # no budget left for statistics today
                 except httpx.HTTPStatusError as exc:
                     if exc.response.status_code != 429:
                         raise

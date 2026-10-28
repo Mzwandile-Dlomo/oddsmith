@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { Fixture } from "@/lib/types";
-import { formatKickoffShort } from "@/lib/utils";
+import { formatKickoffShort, parseKickoff, toLocalISODate } from "@/lib/utils";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FixtureInsights } from "./FixtureInsights";
 import { MarketPicker } from "./MarketPicker";
 import { ChevronDown, Clock, Trophy } from "lucide-react";
 
-/** A match page is found by its kickoff day, so the URL carries both. */
+/** A match page is found by its local kickoff day, so the URL carries both. */
 export function matchHref(fixture: { id: string; kickoff_utc: string }): string {
-  return `/matches/${encodeURIComponent(fixture.id)}?date=${fixture.kickoff_utc.slice(0, 10)}`;
+  return `/matches/${encodeURIComponent(fixture.id)}?date=${toLocalISODate(parseKickoff(fixture.kickoff_utc))}`;
 }
 
 interface FixtureCardProps {

@@ -159,6 +159,9 @@ def _upsert_fixtures(session: Session, fixtures: list[Fixture], fetched_at: date
                 )
             )
         else:
+            if not fixture.markets and row.payload.get("markets"):
+                # The quota guard can skip a refresh's odds; keep the stored ones.
+                payload["markets"] = row.payload["markets"]
             row.kickoff_utc = _naive_utc(fixture.kickoff_utc)
             row.fetched_at = stamp
             row.payload = payload

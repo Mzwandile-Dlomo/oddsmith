@@ -512,3 +512,60 @@ export interface MatchInsights {
   data_through: string | null;
   stale: boolean;
 }
+
+/** A betting angle graded from both sides' recent matches; computed, never generated. */
+export interface Angle {
+  key: string;
+  label: string;
+  strength: "Strong" | "Moderate" | "Weak";
+  hits: number;
+  sample: number;
+  home_hits: number;
+  home_sample: number;
+  away_hits: number;
+  away_sample: number;
+  h2h_hits: number;
+  h2h_sample: number;
+  book_price: number | null;
+  book_implied_prob: number | null;
+}
+
+export interface ResearchCard {
+  fixture_id: string;
+  league: string | null;
+  kickoff_utc: string;
+  home_team: string;
+  away_team: string;
+  /** Newest first. */
+  home_form: string[];
+  away_form: string[];
+  home_goals_for: number | null;
+  away_goals_for: number | null;
+  home_avg_total_goals: number | null;
+  away_avg_total_goals: number | null;
+  angles: Angle[];
+  has_history: boolean;
+  /** False while the schedule only knows the date, not the kickoff time. */
+  time_confirmed: boolean;
+  stale: boolean;
+  priced: boolean;
+}
+
+export interface ResearchDay {
+  date_from: string;
+  date_to: string;
+  leagues: string[];
+  cards: ResearchCard[];
+}
+
+export interface MatchReadView {
+  status: "ok" | "no_key" | "no_history" | "error";
+  angles: Angle[];
+  angle_key: string | null;
+  headline: string | null;
+  summary: string | null;
+  match_read: string | null;
+  model: string | null;
+  generated_at: string | null;
+  message: string | null;
+}

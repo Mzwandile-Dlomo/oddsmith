@@ -882,3 +882,30 @@ def test_history_table_ranks_latest_season_by_points_then_goal_difference(client
         "rows"
     ][0]["team"] == "Spurs"
     assert client.get("/history/table", params={"league": "Nope"}).status_code == 404
+
+
+def test_research_day_keeps_only_the_requested_instants(client):
+    from oddsmith.db import ScheduledFixture
+
+    def fixture(key, kickoff):
+        return ScheduledFixture(
+            source_key=key, source="fixture_download", competition_key="test",
+            league_id=78, league_name="Bundesliga", country="Germany", season=2026,
+            match_number=1, kickoff_utc=kickoff, home_team="Bremen", away_team="Hoffenheim",
+        )
+
+    with Session(db_module.get_engine()) as session:
+        session.add_all([
+            fixture("fd:fri", datetime(2026, 10, 30, 0, 0)),     # Fri 02:00 SAST
+            fixture("fd:sat", datetime(2026, 10, 31, 13, 30)),   # Sat 15:30 SAST
+        ])
+        session.commit()
+
+    # Saturday in SAST (UTC+2) is Fri 22:00 UTC to Sat 21:59:59 UTC.
+    body = client.get(
+        "/research/day",
+        params={"date_from": "2026-10-31T00:00:00+02:00", "date_to": "2026-10-31T23:59:59+02:00"},
+    ).json()
+
+    assert [c["fixture_id"] for c in body["cards"]] == ["fd:sat"]
+    assert body["cards"][0]["time_confirmed"] is True
