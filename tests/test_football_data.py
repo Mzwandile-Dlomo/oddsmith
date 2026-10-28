@@ -2,10 +2,13 @@ import httpx
 import respx
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from datetime import date
+
 from oddsmith.data.football_data import (
     FootballDataCsvProvider,
     import_observations,
     parse_csv,
+    parse_extra_csv,
     season_code,
     season_start,
 )
@@ -87,3 +90,42 @@ def test_csv_provider_uses_archive_url_and_normalizes_both_outputs():
     assert route.called
     assert len(document.observations) == 1
     assert document.rejected == 1
+
+
+EXTRA_CSV = """Country,League,Season,Date,Time,Home,Away,HG,AG,Res,PSCH,PSCD,PSCA,MaxCH,MaxCD,MaxCA
+USA,MLS,2025,19/07/2026,00:30,Old Season,Row,1,1,D,,,,,,
+USA,MLS,2026,26/10/2026,01:00,Los Angeles FC,Los Angeles Galaxy,2,2,D,2.0,3.6,3.4,2.1,3.8,3.6
+USA,MLS,2026,01/11/2026,20:00,Upcoming,Fixture,,,,,,,,,
+"""
+
+
+def test_extra_league_file_maps_short_columns_and_row_seasons():
+    observations, rejected = parse_extra_csv(EXTRA_CSV, code="USA")
+
+    assert rejected == 1  # the unplayed fixture
+    latest = observations[-1]
+    assert (latest.home_team, latest.away_team) == ("Los Angeles FC", "Los Angeles Galaxy")
+    assert (latest.home_goals, latest.away_goals) == (2, 2)
+    assert latest.league == "MLS"
+    assert latest.season == 2026
+    assert latest.source_league_code == "USA"
+    assert latest.close_home_odds == 2.1
+
+
+@respx.mock
+def test_extra_league_fetch_keeps_only_the_kickoff_window():
+    respx.get("https://www.football-data.co.uk/new/USA.csv").mock(
+        return_value=httpx.Response(200, text=EXTRA_CSV)
+    )
+    with httpx.Client() as client:
+        document = FootballDataCsvProvider(client).fetch_extra(
+            "usa", kickoff_from=date(2026, 8, 1), kickoff_to=date(2027, 7, 31)
+        )
+
+    assert [row.home_team for row in document.observations] == ["Los Angeles FC"]
+
+
+def test_second_tier_divisions_are_supported():
+    observations, _ = parse_csv(CSV.replace("E0,", "D2,"), season=2025)
+
+    assert observations[0].league == "Bundesliga2"

@@ -33,7 +33,7 @@ jobs:
 
       - run: uv sync --frozen
 
-      - name: Import current-season results for the five major leagues
+      - name: Import current-season results (major leagues, second tiers, MLS, Brazil, Argentina)
         run: |
           # Seasons are named by their starting year and kick off in August, so
           # until then we are still in the season that started last year.

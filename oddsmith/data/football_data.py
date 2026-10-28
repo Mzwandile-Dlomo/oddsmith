@@ -3,6 +3,10 @@
 Football-Data files evolve across seasons, so the parser uses ordered aliases
 for every field and keeps the original row in ``raw_payload``. Missing statistics
 remain ``None``; treating an unrecorded corner count as zero would poison a model.
+
+Two archive layouts exist. Per-season division files (``mmz4281/2627/E0.csv``)
+cover the European leagues; "extra" league files (``new/USA.csv``) hold every
+season of a calendar-year league in one document with shorter column names.
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ import hashlib
 import io
 import ssl
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 
 import httpx
 
@@ -26,6 +30,11 @@ DIVISION_NAMES = {
     "SP1": "LaLiga",
     "I1": "SerieA",
     "F1": "Ligue1",
+    "E1": "Championship",
+    "D2": "Bundesliga2",
+    "SP2": "LaLiga2",
+    "I2": "SerieB",
+    "F2": "Ligue2",
     "N1": "Eredivisie",
     "P1": "PrimeiraLiga",
     "SC0": "ScottishPremiership",
@@ -39,7 +48,22 @@ MAJOR_DIVISIONS = {
     "F1": (61, "Ligue 1", "France"),
 }
 
+# Second tiers keep form current for promoted and relegated clubs and for cup
+# ties against them. They feed match observations only, not the Poisson
+# baseline, so adding them does not change what the odds model trains on.
+SECOND_DIVISIONS = ("E1", "D2", "SP2", "I2", "F2")
+SUPPORTED_DIVISIONS = (*MAJOR_DIVISIONS, *SECOND_DIVISIONS)
+
+# Calendar-year leagues from the "extra" archive, labelled as the historical
+# table already names them.
+EXTRA_LEAGUES = {
+    "USA": "MLS",
+    "BRA": "Brazil",
+    "ARG": "Argentina",
+}
+
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{season_code}/{division}.csv"
+EXTRA_URL = "https://www.football-data.co.uk/new/{code}.csv"
 
 
 @dataclass(frozen=True)
@@ -73,11 +97,7 @@ class FootballDataCsvProvider:
         self._client = client
         self._ca_bundle = ca_bundle
 
-    def fetch(self, *, season_code: str, division: str) -> FootballDataDocument:
-        season = season_start(season_code)
-        division = division.upper()
-        if division not in MAJOR_DIVISIONS:
-            raise ValueError(f"unsupported Football-Data division: {division}")
+    def _download(self, url: str) -> str:
         verify: bool | ssl.SSLContext = True
         if self._ca_bundle:
             verify = ssl.create_default_context()
@@ -89,20 +109,42 @@ class FootballDataCsvProvider:
         )
         owns_client = self._client is None
         try:
-            response = client.get(
-                BASE_URL.format(season_code=season_code, division=division)
-            )
+            response = client.get(url)
             response.raise_for_status()
-            observations, rejected = parse_csv(response.text, season=season)
-            return FootballDataDocument(
-                season_code=season_code,
-                division=division,
-                observations=observations,
-                rejected=rejected,
-            )
+            return response.text
         finally:
             if owns_client:
                 client.close()
+
+    def fetch(self, *, season_code: str, division: str) -> FootballDataDocument:
+        season = season_start(season_code)
+        division = division.upper()
+        if division not in SUPPORTED_DIVISIONS:
+            raise ValueError(f"unsupported Football-Data division: {division}")
+        document = self._download(BASE_URL.format(season_code=season_code, division=division))
+        observations, rejected = parse_csv(document, season=season)
+        return FootballDataDocument(
+            season_code=season_code,
+            division=division,
+            observations=observations,
+            rejected=rejected,
+        )
+
+    def fetch_extra(self, code: str, *, kickoff_from: date, kickoff_to: date) -> FootballDataDocument:
+        """One calendar-year league, keeping matches that kicked off in the range."""
+        code = code.upper()
+        if code not in EXTRA_LEAGUES:
+            raise ValueError(f"unsupported Football-Data extra league: {code}")
+        document = self._download(EXTRA_URL.format(code=code))
+        observations, rejected = parse_extra_csv(document, code=code)
+        return FootballDataDocument(
+            season_code=f"{kickoff_from.isoformat()}..{kickoff_to.isoformat()}",
+            division=code,
+            observations=[
+                row for row in observations if kickoff_from <= row.kickoff_utc.date() <= kickoff_to
+            ],
+            rejected=rejected,
+        )
 
 
 def season_code(start_year: int) -> str:
@@ -260,57 +302,92 @@ def parse_csv(
     rejected = 0
     for raw in reader:
         row = {str(k).strip(): str(v).strip() for k, v in raw.items() if k is not None and v}
-        division = _first(row, "Div") or "unknown"
-        kickoff = _kickoff(row)
-        home = _first(row, "HomeTeam")
-        away = _first(row, "AwayTeam")
-        home_goals = _integer(row, "FTHG")
-        away_goals = _integer(row, "FTAG")
-        if kickoff is None or not home or not away or home_goals is None or away_goals is None:
+        observation = _row_observation(row, season=season, league=league)
+        if observation is None:
             rejected += 1
-            continue
+        else:
+            observations.append(observation)
+    return observations, rejected
 
-        observations.append(
-            MatchObservation(
-                source_key=_source_key(division, season, kickoff, home, away),
-                source="football_data",
-                source_league_code=division,
-                league=league or DIVISION_NAMES.get(division, division),
-                season=season,
-                kickoff_utc=kickoff,
-                home_team=home,
-                away_team=away,
-                referee=_first(row, "Referee"),
-                home_goals=home_goals,
-                away_goals=away_goals,
-                half_time_home_goals=_integer(row, "HTHG"),
-                half_time_away_goals=_integer(row, "HTAG"),
-                home_shots=_integer(row, "HS"),
-                away_shots=_integer(row, "AS"),
-                home_shots_on_target=_integer(row, "HST"),
-                away_shots_on_target=_integer(row, "AST"),
-                home_corners=_integer(row, "HC"),
-                away_corners=_integer(row, "AC"),
-                home_fouls=_integer(row, "HF"),
-                away_fouls=_integer(row, "AF"),
-                home_yellow_cards=_integer(row, "HY"),
-                away_yellow_cards=_integer(row, "AY"),
-                home_red_cards=_integer(row, "HR"),
-                away_red_cards=_integer(row, "AR"),
-                # Prefer market closing maximums, then pre-closing maximums,
-                # then a single bookmaker. Aliases cover old and new files.
-                close_home_odds=_decimal(row, "MaxCH", "MaxH", "B365CH", "B365H"),
-                close_draw_odds=_decimal(row, "MaxCD", "MaxD", "B365CD", "B365D"),
-                close_away_odds=_decimal(row, "MaxCA", "MaxA", "B365CA", "B365A"),
-                close_over_2_5_odds=_decimal(
-                    row, "MaxC>2.5", "Max>2.5", "B365C>2.5", "B365>2.5"
-                ),
-                close_under_2_5_odds=_decimal(
-                    row, "MaxC<2.5", "Max<2.5", "B365C<2.5", "B365<2.5"
-                ),
-                raw_payload={**row, "_normalized_odds": _odds_payload(row)},
-            )
+
+def _row_observation(
+    row: dict[str, str], *, season: int, league: str | None
+) -> MatchObservation | None:
+    division = _first(row, "Div") or "unknown"
+    kickoff = _kickoff(row)
+    home = _first(row, "HomeTeam")
+    away = _first(row, "AwayTeam")
+    home_goals = _integer(row, "FTHG")
+    away_goals = _integer(row, "FTAG")
+    if kickoff is None or not home or not away or home_goals is None or away_goals is None:
+        return None
+    return MatchObservation(
+        source_key=_source_key(division, season, kickoff, home, away),
+        source="football_data",
+        source_league_code=division,
+        league=league or DIVISION_NAMES.get(division, division),
+        season=season,
+        kickoff_utc=kickoff,
+        home_team=home,
+        away_team=away,
+        referee=_first(row, "Referee"),
+        home_goals=home_goals,
+        away_goals=away_goals,
+        half_time_home_goals=_integer(row, "HTHG"),
+        half_time_away_goals=_integer(row, "HTAG"),
+        home_shots=_integer(row, "HS"),
+        away_shots=_integer(row, "AS"),
+        home_shots_on_target=_integer(row, "HST"),
+        away_shots_on_target=_integer(row, "AST"),
+        home_corners=_integer(row, "HC"),
+        away_corners=_integer(row, "AC"),
+        home_fouls=_integer(row, "HF"),
+        away_fouls=_integer(row, "AF"),
+        home_yellow_cards=_integer(row, "HY"),
+        away_yellow_cards=_integer(row, "AY"),
+        home_red_cards=_integer(row, "HR"),
+        away_red_cards=_integer(row, "AR"),
+        # Prefer market closing maximums, then pre-closing maximums,
+        # then a single bookmaker. Aliases cover old and new files.
+        close_home_odds=_decimal(row, "MaxCH", "MaxH", "B365CH", "B365H"),
+        close_draw_odds=_decimal(row, "MaxCD", "MaxD", "B365CD", "B365D"),
+        close_away_odds=_decimal(row, "MaxCA", "MaxA", "B365CA", "B365A"),
+        close_over_2_5_odds=_decimal(
+            row, "MaxC>2.5", "Max>2.5", "B365C>2.5", "B365>2.5"
+        ),
+        close_under_2_5_odds=_decimal(
+            row, "MaxC<2.5", "Max<2.5", "B365C<2.5", "B365<2.5"
+        ),
+        raw_payload={**row, "_normalized_odds": _odds_payload(row)},
+    )
+
+
+# Extra-archive column names mapped onto the division-file names parse_csv reads.
+_EXTRA_COLUMNS = {"Home": "HomeTeam", "Away": "AwayTeam", "HG": "FTHG", "AG": "FTAG"}
+
+
+def parse_extra_csv(document: str, *, code: str) -> tuple[list[MatchObservation], int]:
+    """Parse one "extra" league file; each row carries its own season."""
+    reader = csv.DictReader(io.StringIO(document.lstrip("\ufeff")))
+    observations: list[MatchObservation] = []
+    rejected = 0
+    for raw in reader:
+        row = {
+            _EXTRA_COLUMNS.get(str(k).strip(), str(k).strip()): str(v).strip()
+            for k, v in raw.items()
+            if k is not None and v
+        }
+        row["Div"] = code
+        season = (row.get("Season") or "")[:4]
+        observation = (
+            _row_observation(row, season=int(season), league=EXTRA_LEAGUES[code])
+            if season.isdigit()
+            else None
         )
+        if observation is None:
+            rejected += 1
+        else:
+            observations.append(observation)
     return observations, rejected
 
 

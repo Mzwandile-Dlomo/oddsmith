@@ -112,6 +112,30 @@ _ALIASES = {
     "stade reims": "reims",
     "stade rennais": "rennes",
     "strasbourg alsace": "strasbourg",
+    # 2. Bundesliga
+    "dynamo dresden": "dresden",
+    "hertha bsc": "hertha",
+    # MLS
+    "atlanta united": "atlanta utd",
+    "d c united": "dc united",
+    "la galaxy": "los angeles galaxy",
+    # Brazil Serie A
+    "atletico mineiro": "atletico mg",
+    "atletico paranaense": "athletico pr",
+    "bragantino sp": "bragantino",
+    # Argentina Primera Division
+    "aldosivi mar del plata": "aldosivi",
+    "argentinos juniors": "argentinos jrs",
+    "atletico huracan": "huracan",
+    "belgrano cordoba": "belgrano",
+    "deportivo riestra": "dep riestra",
+    "estudiantes": "estudiantes l p",
+    "gimnasia la plata": "gimnasia l p",
+    "independiente rivadavia": "ind rivadavia",
+    "instituto cordoba": "instituto",
+    "talleres": "talleres cordoba",
+    "tigre ba": "tigre",
+    "velez sarsfield ba": "velez sarsfield",
 }
 
 
