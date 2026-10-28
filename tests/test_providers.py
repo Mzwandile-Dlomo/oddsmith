@@ -6,7 +6,7 @@ import respx
 
 from oddsmith.config import Settings
 from oddsmith.models import MarketType
-from oddsmith.providers.api_football import ApiFootballProvider
+from oddsmith.providers.api_football import ApiFootballProvider, league_label
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
 from oddsmith.providers.the_odds_api import DEFAULT_SOCCER_SPORTS
 
@@ -327,3 +327,18 @@ async def test_provider_missing_key_raises():
             date_from=datetime(2026, 7, 25, tzinfo=UTC),
             date_to=datetime(2026, 7, 26, tzinfo=UTC),
         )
+
+
+@pytest.mark.parametrize(
+    ("league", "label"),
+    [
+        ({"id": 135, "name": "Serie A", "country": "Italy"}, "Serie A"),
+        ({"id": 71, "name": "Serie A", "country": "Brazil"}, "Brazil Serie A"),
+        ({"id": 235, "name": "Premier League", "country": "Russia"}, "Russia Premier League"),
+        ({"id": 128, "name": "Liga Profesional Argentina", "country": "Argentina"}, "Liga Profesional Argentina"),
+        ({"id": 1, "name": "World Cup", "country": "World"}, "World Cup"),
+        ({"name": "Premier League"}, "Premier League"),
+    ],
+)
+def test_league_label_keeps_same_named_leagues_apart(league, label):
+    assert league_label(league) == label

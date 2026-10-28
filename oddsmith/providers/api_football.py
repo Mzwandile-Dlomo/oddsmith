@@ -6,7 +6,7 @@ Two upstream hosts share the same v3 API but differ in auth headers:
 
 Endpoints used:
   GET /fixtures?from=YYYY-MM-DD&to=YYYY-MM-DD&timezone=UTC
-    -> response[].fixture{id,date}, .teams.home.name/.away.name, .league.name
+    -> response[].fixture{id,date}, .teams.home.name/.away.name, .league{id,name,country}
   GET /odds?fixture={id}
     -> response[].bookmakers[].bets[]{id,name,values[]{value,odd}}
 
@@ -78,6 +78,7 @@ class ApiFootballResult:
     away_yellow_cards: int | None = None
     home_red_cards: int | None = None
     away_red_cards: int | None = None
+    league_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -320,7 +321,8 @@ class ApiFootballProvider(OddsProvider):
         return ApiFootballResult(
             fixture_id=str(fixture["id"]),
             kickoff_utc=datetime.fromisoformat(fixture["date"].replace("Z", "+00:00")),
-            league=str(league.get("name") or "unknown"),
+            league=league_label(league),
+            league_id=league.get("id"),
             season=int(league.get("season") or fixture["date"][:4]),
             home_team_id=int(teams["home"]["id"]),
             away_team_id=int(teams["away"]["id"]),
@@ -399,6 +401,23 @@ class ApiFootballProvider(OddsProvider):
             league=league.get("name"),
             provider=self.name,
         )
+
+
+def league_label(league: dict) -> str:
+    """A league name unique across countries.
+
+    API-Football reuses names: Italy and Brazil both run a "Serie A", and
+    several countries a "Premier League". Catalogue leagues keep their own
+    name; any other gets its country in front unless the name already says it.
+    """
+    competition = BY_ID.get(league.get("id"))
+    if competition is not None:
+        return competition.name
+    name = str(league.get("name") or "unknown")
+    country = str(league.get("country") or "")
+    if not country or country == "World" or country.casefold() in name.casefold():
+        return name
+    return f"{country} {name}"
 
 
 def _to_float(value: object) -> float | None:

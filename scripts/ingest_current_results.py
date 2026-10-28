@@ -72,7 +72,7 @@ def _observation(result: ApiFootballResult) -> MatchObservation:
         away_yellow_cards=result.away_yellow_cards,
         home_red_cards=result.home_red_cards,
         away_red_cards=result.away_red_cards,
-        raw_payload={"fixture_id": result.fixture_id},
+        raw_payload={"fixture_id": result.fixture_id, "league_id": result.league_id},
     )
 
 

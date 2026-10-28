@@ -123,6 +123,9 @@ _ALIASES = {
     "atletico mineiro": "atletico mg",
     "atletico paranaense": "athletico pr",
     "bragantino sp": "bragantino",
+    "botafogo": "botafogo rj",
+    "flamengo": "flamengo rj",
+    "vasco da gama": "vasco",
     # Argentina Primera Division
     "aldosivi mar del plata": "aldosivi",
     "argentinos juniors": "argentinos jrs",
