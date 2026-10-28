@@ -55,7 +55,7 @@ export function SegmentedControl<T extends string | number>({
               disabled
                 ? "cursor-not-allowed text-faint opacity-60"
                 : active
-                  ? "bg-accent text-white shadow-sm"
+                  ? "bg-accent text-canvas shadow-sm"
                   : "text-muted hover:bg-hairline hover:text-ink"
             }`}
           >

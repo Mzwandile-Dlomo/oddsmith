@@ -3,7 +3,7 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { SlipStoreProvider } from "@/store/slip-store";
-import { MobileTabBar, MobileTopBar, Sidebar } from "@/components/shell/Sidebar";
+import { AppShell } from "@/components/shell/Sidebar";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 
@@ -31,15 +31,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-canvas font-sans antialiased">
         <QueryProvider>
           <SlipStoreProvider>
-            <Sidebar />
-            <div className="lg:pl-60">
-              <MobileTopBar />
-              {/* pb clears the fixed tab bar on mobile; nothing to clear on lg. */}
-              <main className="page-container pb-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom,0px)+1rem)] pt-5 sm:pt-6 lg:pb-12 lg:pt-8">
-                {children}
-              </main>
-            </div>
-            <MobileTabBar />
+            <AppShell>{children}</AppShell>
           </SlipStoreProvider>
         </QueryProvider>
       </body>

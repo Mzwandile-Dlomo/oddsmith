@@ -391,6 +391,15 @@ export interface TeamStatsView {
   form: string[];
 }
 
+export interface LeagueTableView {
+  league: string;
+  season: number;
+  /** Newest first. */
+  seasons: number[];
+  /** Ranked by points, goal difference, goals for. */
+  rows: TeamStatsView[];
+}
+
 export interface CalendarDayModel {
   candidate_count: number;
   target_met: boolean;

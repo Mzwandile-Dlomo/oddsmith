@@ -845,3 +845,40 @@ def test_fixture_insights_for_a_scheduled_fixture(client):
 
 def test_fixture_insights_unknown_fixture_is_404(client):
     assert client.get("/fixtures/nope/insights").status_code == 404
+
+
+def test_history_table_ranks_latest_season_by_points_then_goal_difference(client):
+    def result(day, home, away, home_goals, away_goals, season=2026):
+        return HistoricalMatch(
+            league="EPL",
+            season=season,
+            kickoff_utc=datetime(2026, 8, day, tzinfo=UTC),
+            home_team=home,
+            away_team=away,
+            home_goals=home_goals,
+            away_goals=away_goals,
+        )
+
+    with Session(db_module.get_engine()) as session:
+        session.add_all(
+            [
+                result(1, "Arsenal", "Chelsea", 3, 0),
+                result(8, "Chelsea", "Spurs", 1, 0),
+                result(15, "Spurs", "Arsenal", 1, 1),
+                # An older season must not leak into the default (latest) table.
+                result(2, "Spurs", "Chelsea", 9, 0, season=2025),
+            ]
+        )
+        session.commit()
+
+    body = client.get("/history/table", params={"league": "EPL"}).json()
+
+    assert body["season"] == 2026
+    assert body["seasons"] == [2026, 2025]
+    assert [row["team"] for row in body["rows"]] == ["Arsenal", "Chelsea", "Spurs"]
+    assert body["rows"][0]["points"] == 4
+    assert body["rows"][0]["form"] == ["W", "D"]
+    assert client.get("/history/table", params={"league": "EPL", "season": 2025}).json()[
+        "rows"
+    ][0]["team"] == "Spurs"
+    assert client.get("/history/table", params={"league": "Nope"}).status_code == 404

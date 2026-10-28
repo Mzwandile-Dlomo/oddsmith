@@ -313,7 +313,7 @@ export function OddsGenerator() {
           <button
             onClick={handleGenerate}
             disabled={accaQuery.isFetching}
-            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-accent px-5 sm:min-h-[44px] text-sm font-semibold text-white transition-all duration-150 hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-accent px-5 sm:min-h-[44px] text-sm font-semibold text-canvas transition-all duration-150 hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {accaQuery.isFetching ? (
               <>

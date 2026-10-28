@@ -101,10 +101,10 @@ export function FixtureBrowser({
         Day headers stick to the app chrome instead of to an inner container.
       */}
       {!isLoading && !isError && grouped.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <div className="overflow-clip rounded-2xl border border-border bg-surface shadow-card">
           {grouped.map((group) => (
             <div key={group.isoDate}>
-              <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-hairline bg-canvas/95 px-4 py-2.5 backdrop-blur-sm lg:top-0">
+              <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-hairline bg-canvas/95 px-4 py-2.5 backdrop-blur-sm">
                 <CalendarDays size={13} className="shrink-0 text-accent" />
                 <span className="truncate text-xs font-semibold uppercase tracking-widest text-muted">
                   {group.label}

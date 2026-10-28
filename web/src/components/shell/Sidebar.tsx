@@ -1,19 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  BarChart3,
   CalendarDays,
   FlaskConical,
-  LayoutGrid,
+  LayoutDashboard,
   ListChecks,
-  Pin,
-  MoreHorizontal,
+  Menu,
+  Search,
   Sparkles,
-  Sun,
   Trophy,
+  Users,
   X,
 } from "lucide-react";
 import { fetchSlips } from "@/lib/api";
@@ -26,22 +27,23 @@ interface NavItem {
   hint: string;
 }
 
-/** Ordered by the daily routine: check today, plan ahead, then review. */
-const PRIMARY: NavItem[] = [
-  { href: "/today", label: "Today", icon: Sun, hint: "Today's slip and card" },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays, hint: "Plan and review by day" },
+/**
+ * One flat list of places, not a list of tasks: each entry is a thing you
+ * browse, and detail pages (a match, a team) hang off the list that leads to them.
+ */
+const NAV: NavItem[] = [
+  { href: "/", label: "Overview", icon: LayoutDashboard, hint: "Your numbers at a glance" },
+  { href: "/matches", label: "Matches", icon: CalendarDays, hint: "Fixtures, prices and match pages" },
+  { href: "/picks", label: "Picks", icon: Sparkles, hint: "Daily slip, value acca and pool" },
   { href: "/slips", label: "Slips", icon: ListChecks, hint: "Open bets and settling" },
-  { href: "/results", label: "Results", icon: Trophy, hint: "Settled outcomes and history" },
-];
-
-const SECONDARY: NavItem[] = [
-  { href: "/build", label: "Build", icon: LayoutGrid, hint: "Manual bet builder" },
-  { href: "/pool", label: "Pool", icon: Pin, hint: "Personal favourable selections" },
-  { href: "/generate", label: "Value", icon: Sparkles, hint: "Positive-EV selections" },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, hint: "Profit, hit rate and paper tracking" },
+  { href: "/leagues", label: "Leagues", icon: Trophy, hint: "Tables and results" },
+  { href: "/teams", label: "Teams", icon: Users, hint: "Form, record and results" },
   { href: "/model", label: "Model", icon: FlaskConical, hint: "Evidence and validation" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -73,7 +75,7 @@ function Wordmark({ size = "md" }: { size?: "sm" | "md" }) {
 }
 
 /** Bankroll figures derived from settled slips, shared by every shell surface. */
-function useBankroll() {
+export function useBankroll() {
   const { data: slips } = useQuery({ queryKey: ["slips"], queryFn: fetchSlips });
   if (!slips) return null;
 
@@ -92,25 +94,35 @@ function pnlTone(pnl: number): string {
   return pnl > 0 ? "text-success" : pnl < 0 ? "text-danger" : "text-ink";
 }
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
-  const Icon = item.icon;
+function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
-    <Link
-      href={item.href}
-      title={item.hint}
-      aria-current={active ? "page" : undefined}
-      className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-        active
-          ? "bg-accent-light text-accent shadow-[inset_3px_0_0_#d8ff45]"
-          : "text-muted hover:bg-hairline hover:text-ink"
-      }`}
-    >
-      <Icon
-        size={16}
-        className={`shrink-0 ${active ? "text-accent" : "text-faint group-hover:text-muted"}`}
-      />
-      {item.label}
-    </Link>
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+      {NAV.map((item) => {
+        const active = isActive(pathname, item.href);
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            title={item.hint}
+            onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
+            className={`group flex min-h-[44px] items-center gap-3 rounded-xl border px-3 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:min-h-[40px] ${
+              active
+                ? "border-accent/20 bg-accent-light text-accent"
+                : "border-transparent text-muted hover:bg-hairline hover:text-ink"
+            }`}
+          >
+            <Icon
+              size={17}
+              className={`shrink-0 ${active ? "text-accent" : "text-faint group-hover:text-muted"}`}
+            />
+            {item.label}
+            {active && <span aria-hidden className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" />}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -146,206 +158,148 @@ function BankrollSummary() {
   );
 }
 
-export function Sidebar() {
-  const pathname = usePathname();
-
+function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border bg-surface/90 backdrop-blur-xl lg:flex">
-      <div className="flex h-20 shrink-0 items-center border-b border-border px-5">
-        <Wordmark />
-      </div>
-
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-        {PRIMARY.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-        ))}
-
-        <p className="mt-7 mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-faint">
-          Tools
-        </p>
-        {SECONDARY.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-        ))}
-      </nav>
-
+    <>
+      <NavList pathname={pathname} onNavigate={onNavigate} />
       <BankrollSummary />
-    </aside>
+    </>
   );
 }
 
-/**
- * Mobile chrome is split in two: a slim bar that only carries identity and the
- * bankroll figure, and a thumb-reachable tab bar pinned to the bottom. The old
- * scrolling pill row cost ~90px of vertical space and hid half the destinations
- * off the right edge.
- */
-export function MobileTopBar() {
-  const bankroll = useBankroll();
+/** Team search: the one search that has a page to land on. */
+function TeamSearch() {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-canvas/85 px-4 backdrop-blur-md lg:hidden">
-      <Wordmark size="sm" />
-      {bankroll && bankroll.settledCount > 0 && (
-        <span className="flex items-baseline gap-1.5 rounded-full border border-border bg-canvas px-2.5 py-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-faint">
-            P&amp;L
+    <form
+      role="search"
+      className="relative min-w-0 flex-1 sm:max-w-md"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const q = query.trim();
+        router.push(q ? `/teams?q=${encodeURIComponent(q)}` : "/teams");
+      }}
+    >
+      <Search
+        size={15}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint"
+      />
+      <label htmlFor="shell-search" className="sr-only">
+        Search teams
+      </label>
+      <input
+        id="shell-search"
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search teams…"
+        className="h-10 w-full rounded-xl border border-border bg-subtle/70 pl-9 pr-3 text-base text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20 sm:h-9 sm:text-sm"
+      />
+    </form>
+  );
+}
+
+function TopBar({ onMenu }: { onMenu: () => void }) {
+  const bankroll = useBankroll();
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  return (
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-canvas/85 px-4 backdrop-blur-md sm:px-6">
+      <button
+        onClick={onMenu}
+        aria-label="Open menu"
+        className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-hairline hover:text-ink lg:hidden"
+      >
+        <Menu size={20} />
+      </button>
+      <TeamSearch />
+      <div className="ml-auto flex shrink-0 items-center gap-3">
+        <span className="hidden text-sm text-muted md:block">{today}</span>
+        {bankroll && bankroll.settledCount > 0 && (
+          <span className="flex items-baseline gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-faint">
+              P&amp;L
+            </span>
+            <span className={`text-xs font-semibold tabular-nums ${pnlTone(bankroll.pnl)}`}>
+              {formatSignedCurrency(bankroll.pnl, bankroll.currency)}
+            </span>
           </span>
-          <span className={`text-xs font-semibold tabular-nums ${pnlTone(bankroll.pnl)}`}>
-            {formatSignedCurrency(bankroll.pnl, bankroll.currency)}
-          </span>
-        </span>
-      )}
+        )}
+      </div>
     </header>
   );
 }
 
-function TabButton({
-  active,
-  label,
-  icon: Icon,
-  ...rest
-}: {
-  active: boolean;
-  label: string;
-  icon: React.ElementType;
-} & React.ComponentProps<"button">) {
-  return (
-    <button
-      {...rest}
-      className={`flex min-h-[56px] flex-col items-center justify-center gap-1 px-1 transition-colors duration-150 focus:outline-none focus-visible:bg-hairline ${
-        active ? "text-accent" : "text-faint"
-      }`}
-    >
-      <Icon size={20} className="shrink-0" />
-      <span className="text-[10px] font-medium leading-none">{label}</span>
-    </button>
-  );
-}
-
-export function MobileTabBar() {
+/**
+ * Desktop keeps the sidebar fixed; phones get the same list in a drawer opened
+ * from the top bar, so every destination is one tap away instead of hiding
+ * half of them behind a "More" sheet.
+ */
+export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const bankroll = useBankroll();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // While the sheet covers the page, the page behind it must not scroll.
+  // While the drawer covers the page, the page behind it must not scroll.
   useEffect(() => {
-    if (!sheetOpen) return;
+    if (!drawerOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSheetOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawerOpen(false);
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKey);
     };
-  }, [sheetOpen]);
-
-  const toolsActive = SECONDARY.some((item) => isActive(pathname, item.href));
+  }, [drawerOpen]);
 
   return (
     <>
-      {sheetOpen && (
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border bg-surface/90 backdrop-blur-xl lg:flex">
+        <Link href="/" className="flex h-14 shrink-0 items-center border-b border-border px-5">
+          <Wordmark />
+        </Link>
+        <SidebarBody pathname={pathname} />
+      </aside>
+
+      {drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
             aria-label="Close menu"
-            onClick={() => setSheetOpen(false)}
-            className="absolute inset-0 bg-ink/30 backdrop-blur-[2px]"
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
           />
-          <div
+          <aside
             role="dialog"
             aria-modal="true"
-            aria-label="More"
-            className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-border bg-surface pb-safe shadow-sheet"
+            aria-label="Menu"
+            className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-surface shadow-panel"
           >
-            <div className="flex items-center justify-between px-5 pt-4 pb-2">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-faint">
-                Tools
-              </p>
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+              <Wordmark size="sm" />
               <button
-                onClick={() => setSheetOpen(false)}
+                onClick={() => setDrawerOpen(false)}
                 aria-label="Close menu"
                 className="-mr-2 flex h-11 w-11 items-center justify-center rounded-lg text-faint transition-colors hover:bg-hairline hover:text-ink"
               >
                 <X size={18} />
               </button>
             </div>
-
-            <nav className="flex flex-col px-3 pb-2">
-              {SECONDARY.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setSheetOpen(false)}
-                    aria-current={active ? "page" : undefined}
-                    className={`flex min-h-[52px] items-center gap-3 rounded-xl px-3 ${
-                      active ? "bg-accent-light text-accent" : "text-ink"
-                    }`}
-                  >
-                    <Icon size={18} className={active ? "text-accent" : "text-faint"} />
-                    <span className="flex flex-col">
-                      <span className="text-sm font-medium leading-tight">{item.label}</span>
-                      <span className="text-[11px] leading-tight text-faint">{item.hint}</span>
-                    </span>
-                  </Link>
-                );
-              })}
-            </nav>
-
-            {bankroll && (
-              <div className="mx-3 mb-4 flex items-center justify-between rounded-xl border border-border bg-canvas px-4 py-3">
-                <span className="flex flex-col">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-faint">
-                    Net profit / loss
-                  </span>
-                  <span className="text-[11px] text-muted">
-                    {bankroll.settledCount} settled
-                    {bankroll.pendingCount > 0 &&
-                      ` · ${bankroll.currency} ${bankroll.atRisk.toFixed(2)} at risk`}
-                  </span>
-                </span>
-                <span
-                  className={`text-lg font-semibold tabular-nums ${pnlTone(bankroll.pnl)}`}
-                >
-                  {bankroll.settledCount === 0
-                    ? "—"
-                    : formatSignedCurrency(bankroll.pnl, bankroll.currency)}
-                </span>
-              </div>
-            )}
-          </div>
+            <SidebarBody pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
+          </aside>
         </div>
       )}
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-surface/95 pb-safe backdrop-blur-md lg:hidden">
-        {PRIMARY.map((item) => {
-          const active = isActive(pathname, item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={`flex min-h-[56px] flex-col items-center justify-center gap-1 px-1 transition-colors duration-150 ${
-                active ? "text-accent" : "text-faint"
-              }`}
-            >
-              <Icon size={20} className="shrink-0" />
-              <span className="text-[10px] font-medium leading-none">{item.label}</span>
-            </Link>
-          );
-        })}
-        <TabButton
-          active={toolsActive || sheetOpen}
-          label="More"
-          icon={MoreHorizontal}
-          onClick={() => setSheetOpen((v) => !v)}
-          aria-haspopup="dialog"
-          aria-expanded={sheetOpen}
-        />
-      </nav>
+      <div className="lg:pl-60">
+        <TopBar onMenu={() => setDrawerOpen(true)} />
+        <main className="page-container pb-12 pt-5 sm:pt-6 lg:pt-8">{children}</main>
+      </div>
     </>
   );
 }

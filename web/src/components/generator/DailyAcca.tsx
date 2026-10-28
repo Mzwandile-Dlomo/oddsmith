@@ -25,6 +25,39 @@ const MARKET_OPTIONS: { type: MarketType; label: string }[] = [
   { type: "btts", label: "Both teams score" },
 ];
 
+/**
+ * The daily-slip request, shared so the Overview card and the Picks tab hit one
+ * cached query: one provider scan and at most one auto-tracked paper ticket.
+ */
+export function dailyAccaQuery({
+  date,
+  targetOdds = 1.5,
+  bankroll = 100,
+  markets = MARKET_OPTIONS.map((m) => m.type),
+  autoTrack = false,
+}: {
+  date?: string;
+  targetOdds?: number;
+  bankroll?: number;
+  markets?: MarketType[];
+  autoTrack?: boolean;
+}) {
+  return {
+    queryKey: ["daily-acca", date ?? "next24h", targetOdds, bankroll, markets, autoTrack],
+    queryFn: () =>
+      fetchDailyAcca({
+        targetOdds,
+        maxLegs: MAX_LEGS,
+        bankroll,
+        horizonBets: HORIZON_DAYS,
+        markets,
+        date,
+        autoTrack,
+      }),
+    staleTime: 60_000,
+  };
+}
+
 function odds(v: number) {
   return v.toFixed(2);
 }
@@ -311,7 +344,7 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
               </div>
               {data.legs[0]?.kickoff_utc && (
                 <Link
-                  href={`/calendar/${data.legs[0].kickoff_utc.slice(0, 10)}`}
+                  href={`/matches/calendar/${data.legs[0].kickoff_utc.slice(0, 10)}`}
                   className="text-xs font-semibold text-success-deeper underline decoration-success/40 underline-offset-2 hover:decoration-success"
                 >
                   Mark the result
@@ -373,19 +406,8 @@ export function DailyAcca({
   const queryClient = useQueryClient();
 
   const dailyQuery = useQuery<DailyAccaView>({
-    queryKey: ["daily-acca", date ?? "next24h", targetOdds, bankroll, markets, autoTrack],
-    queryFn: () =>
-      fetchDailyAcca({
-        targetOdds,
-        maxLegs: MAX_LEGS,
-        bankroll,
-        horizonBets: HORIZON_DAYS,
-        markets,
-        date,
-        autoTrack,
-      }),
+    ...dailyAccaQuery({ date, targetOdds, bankroll, markets, autoTrack }),
     enabled,
-    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -550,7 +572,7 @@ export function DailyAcca({
           <button
             onClick={handleGenerate}
             disabled={dailyQuery.isFetching || markets.length === 0}
-            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-accent px-5 sm:min-h-[44px] text-sm font-semibold text-white transition-all duration-150 hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-accent px-5 sm:min-h-[44px] text-sm font-semibold text-canvas transition-all duration-150 hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {dailyQuery.isFetching ? (
               <>

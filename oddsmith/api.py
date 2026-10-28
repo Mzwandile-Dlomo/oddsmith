@@ -1279,7 +1279,9 @@ class HistoryMatchView(BaseModel):
     away_goals: int
 
 
-def _history_match_rows(session: Session) -> list[HistoryMatchView]:
+def _history_match_rows(
+    session: Session, *, league: str | None = None, season: int | None = None
+) -> list[HistoryMatchView]:
     """Combine long-run CSV history with recently ingested cup/live results.
 
     Football-Data supplies the five domestic leagues, while Champions League and
@@ -1287,8 +1289,17 @@ def _history_match_rows(session: Session) -> list[HistoryMatchView]:
     must see both sources.  Prefer an observation when both describe the same
     fixture because it is the newer, richer source row.
     """
+    # Filters run in SQL: a league table should not pull every row from both tables.
+    historical = select(HistoricalMatch)
+    observed = select(MatchObservation)
+    if league is not None:
+        historical = historical.where(HistoricalMatch.league == league)
+        observed = observed.where(MatchObservation.league == league)
+    if season is not None:
+        historical = historical.where(HistoricalMatch.season == season)
+        observed = observed.where(MatchObservation.season == season)
     rows: dict[tuple[str, datetime, str, str], HistoryMatchView] = {}
-    for match in session.exec(select(HistoricalMatch)):
+    for match in session.exec(historical):
         key = (match.league, match.kickoff_utc, match.home_team, match.away_team)
         rows[key] = HistoryMatchView(
             id=match.id or 0,
@@ -1300,7 +1311,7 @@ def _history_match_rows(session: Session) -> list[HistoryMatchView]:
             home_goals=match.home_goals,
             away_goals=match.away_goals,
         )
-    for match in session.exec(select(MatchObservation)):
+    for match in session.exec(observed):
         key = (match.league, match.kickoff_utc, match.home_team, match.away_team)
         rows[key] = HistoryMatchView(
             # Keep IDs unambiguous when a browser renders mixed source rows.
@@ -1385,6 +1396,62 @@ def history_team_stats(
         away_record=f"{s.away_won}-{s.away_drawn}-{s.away_lost}",
         form=s.form,
     )
+
+
+class LeagueTableView(BaseModel):
+    league: str
+    season: int
+    seasons: list[int]  # newest first, for a season picker
+    rows: list[TeamStatsView]  # ranked by points, goal difference, goals for
+
+
+@app.get("/history/table", response_model=LeagueTableView)
+def history_table(
+    league: str = Query(...),
+    season: int | None = Query(default=None),
+    session: Session = Depends(get_session),
+) -> LeagueTableView:
+    """Standings computed from stored results; defaults to the league's latest season."""
+    seasons = sorted(
+        set(session.exec(select(HistoricalMatch.season).where(HistoricalMatch.league == league)))
+        | set(
+            session.exec(select(MatchObservation.season).where(MatchObservation.league == league))
+        ),
+        reverse=True,
+    )
+    if not seasons:
+        raise HTTPException(status_code=404, detail="league not found in history")
+    chosen = seasons[0] if season is None else season
+    if chosen not in seasons:
+        raise HTTPException(status_code=404, detail="season not found for league")
+
+    rows = _history_match_rows(session, league=league, season=chosen)
+    rows.sort(key=lambda row: row.kickoff_utc)
+    results = [
+        MatchResult(r.home_team, r.away_team, r.home_goals, r.away_goals) for r in rows
+    ]
+    teams = {r.home_team for r in rows} | {r.away_team for r in rows}
+    table = []
+    for team in teams:
+        s = team_stats(team, results)
+        table.append(
+            TeamStatsView(
+                team=s.team,
+                played=s.played,
+                won=s.won,
+                drawn=s.drawn,
+                lost=s.lost,
+                points=s.points,
+                goals_for=s.goals_for,
+                goals_against=s.goals_against,
+                goal_difference=s.goal_difference,
+                home_record=f"{s.home_won}-{s.home_drawn}-{s.home_lost}",
+                away_record=f"{s.away_won}-{s.away_drawn}-{s.away_lost}",
+                form=s.form,
+            )
+        )
+    table.sort(key=lambda t: (-t.points, -t.goal_difference, -t.goals_for, t.team))
+    return LeagueTableView(league=league, season=chosen, seasons=seasons, rows=table)
 
 
 # --------------------------------------------------------------------------- #

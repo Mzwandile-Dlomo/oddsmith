@@ -25,7 +25,7 @@ export function PersonalPool() {
         <p className="mt-1 text-xs text-muted">{summary.pending} pending · {summary.won} won · {summary.lost} lost{summary.void ? ` · ${summary.void} void` : ""}</p>
       </div>)}
     </div>
-    {data.entries.length === 0 ? <EmptyState icon={<Pin size={22} />} title="Your pool is empty" description="In Build, pin a Home/Away winner or a corner-total selection to make it a personal favourite." /> :
+    {data.entries.length === 0 ? <EmptyState icon={<Pin size={22} />} title="Your pool is empty" description="On a match page, pin a Home/Away winner or a corner-total selection to make it a personal favourite." /> :
       <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
         {data.entries.map((entry) => <div key={entry.id} className="flex items-center gap-3 border-b border-hairline px-4 py-3 last:border-0">
           <Trophy size={15} className="shrink-0 text-accent" />

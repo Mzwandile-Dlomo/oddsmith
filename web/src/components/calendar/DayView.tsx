@@ -90,7 +90,7 @@ export function DayView({ date }: { date: string }) {
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 items-center gap-2">
           <Link
-            href="/calendar"
+            href="/matches/calendar"
             className="flex min-h-[40px] shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent transition-colors hover:bg-accent-light focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[30px]"
           >
             <CalendarDays size={13} />
@@ -104,14 +104,14 @@ export function DayView({ date }: { date: string }) {
 
         <div className="flex shrink-0 items-center gap-1">
           <Link
-            href={`/calendar/${prev}`}
+            href={`/matches/calendar/${prev}`}
             aria-label="Previous day"
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-9 sm:w-9"
           >
             <ChevronLeft size={16} />
           </Link>
           <Link
-            href={`/calendar/${next}`}
+            href={`/matches/calendar/${next}`}
             aria-label="Next day"
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-9 sm:w-9"
           >

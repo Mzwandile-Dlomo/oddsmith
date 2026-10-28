@@ -77,7 +77,7 @@ export function SlipPanel({ onSlipSaved, hideHeader = false }: SlipPanelProps) {
             <Receipt size={15} className="shrink-0 text-accent" />
             <span className="text-sm font-semibold text-ink">Bet Slip</span>
             {legs.length > 0 && (
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-white">
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-canvas">
                 {legs.length}
               </span>
             )}

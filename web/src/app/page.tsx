@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
+import { OverviewView } from "@/components/overview/OverviewView";
+
+export const metadata = { title: "Overview — Oddsmith" };
 
 export default function Home() {
-  redirect("/today");
+  return <OverviewView />;
 }

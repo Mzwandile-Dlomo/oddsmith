@@ -71,7 +71,7 @@ export function DayCell({
 
   return (
     <Link
-      href={`/calendar/${day.date}`}
+      href={`/matches/calendar/${day.date}`}
       aria-label={`${day.date}, ${day.fixture_count} matches`}
       className={`group relative flex min-h-[62px] flex-col gap-0.5 border-b border-r border-border p-1 transition-colors sm:min-h-[92px] sm:gap-1 sm:p-2 lg:min-h-[112px] ${
         inMonth ? pnlTone(day) : "bg-canvas"
@@ -81,7 +81,7 @@ export function DayCell({
         <span
           className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums sm:text-xs ${
             isToday
-              ? "bg-accent text-white"
+              ? "bg-accent text-canvas"
               : inMonth
                 ? "text-ink"
                 : "text-outline"

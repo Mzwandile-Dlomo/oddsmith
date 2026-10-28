@@ -48,3 +48,8 @@ export function SkeletonCard() {
     </div>
   );
 }
+
+/** A placeholder block sized by the caller, for a value that is still loading. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-hairline ${className}`} />;
+}

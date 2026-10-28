@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronUp, Receipt, X } from "lucide-react";
-import { FixtureBrowser, type Timeframe } from "@/components/fixtures/FixtureBrowser";
 import { SlipPanel } from "@/components/slip/SlipPanel";
 import { useSlipStore } from "@/store/slip-store";
 import { formatOdds } from "@/lib/utils";
 
-export function BuildWorkspace() {
+/**
+ * Puts the bet slip beside any page that adds selections (the match list and a
+ * single match page), so a slip being built follows you between them.
+ */
+export function SlipDock({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [timeframe, setTimeframe] = useState<Timeframe>("3days");
   const [sheetOpen, setSheetOpen] = useState(false);
   const { legs, computedOdds } = useSlipStore();
 
@@ -43,33 +45,33 @@ export function BuildWorkspace() {
   return (
     <>
       {/*
-        Two columns from `lg` where the slip can sit beside the fixtures. Below
+        Two columns from `lg` where the slip can sit beside the content. Below
         that the panel is a bottom sheet rather than a block stacked underneath
-        a long fixture list, where a selection would scroll out of sight.
+        a long list, where a selection would scroll out of sight.
       */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
-        <FixtureBrowser timeframe={timeframe} onTimeframeChange={setTimeframe} />
+        <div className="min-w-0">{children}</div>
 
-        <div className="hidden lg:sticky lg:top-6 lg:block lg:max-h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
+        <div className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-panel">
             <SlipPanel onSlipSaved={handleSlipSaved} />
           </div>
         </div>
       </div>
 
-      {/* Mobile: a summary bar docked above the tab bar, opening the full panel. */}
+      {/* Mobile: a summary bar docked at the bottom, opening the full panel. */}
       {legs.length > 0 && !showSheet && (
         <button
           onClick={() => setSheetOpen(true)}
           aria-haspopup="dialog"
-          className="fixed inset-x-3 bottom-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom,0px)+0.5rem)] z-40 flex min-h-[52px] items-center gap-3 rounded-2xl bg-accent px-4 text-white shadow-elevated transition-transform active:scale-[0.99] lg:hidden"
+          className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-40 flex min-h-[52px] items-center gap-3 rounded-2xl bg-accent px-4 text-canvas shadow-elevated transition-transform active:scale-[0.99] lg:hidden"
         >
           <Receipt size={17} className="shrink-0" />
           <span className="flex min-w-0 flex-col items-start leading-tight">
             <span className="text-sm font-semibold">
               {legs.length} {legs.length === 1 ? "selection" : "selections"}
             </span>
-            <span className="text-[11px] text-white/75">Tap to review and save</span>
+            <span className="text-[11px] text-canvas/70">Tap to review and save</span>
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1.5">
             <span className="text-base font-bold tabular-nums">
@@ -85,7 +87,7 @@ export function BuildWorkspace() {
           <button
             aria-label="Close bet slip"
             onClick={() => setSheetOpen(false)}
-            className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
           />
           <div
             role="dialog"

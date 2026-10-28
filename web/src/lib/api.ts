@@ -7,6 +7,7 @@ import type {
   EvaluationReportView,
   Fixture,
   HistoryMatch,
+  LeagueTableView,
   LegCreate,
   MarketType,
   MatchInsights,
@@ -205,4 +206,10 @@ export async function fetchTeamStats(
   return request<TeamStatsView>(
     `/history/teams/${encodeURIComponent(team)}/stats${qs ? `?${qs}` : ""}`
   );
+}
+
+export async function fetchLeagueTable(league: string, season?: number): Promise<LeagueTableView> {
+  const params = new URLSearchParams({ league });
+  if (season !== undefined) params.set("season", String(season));
+  return request<LeagueTableView>(`/history/table?${params.toString()}`);
 }
