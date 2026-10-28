@@ -2,7 +2,7 @@ import httpx
 import respx
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from oddsmith.data.football_data import (
     FootballDataCsvProvider,
@@ -13,6 +13,7 @@ from oddsmith.data.football_data import (
     season_start,
 )
 from oddsmith.db import HistoricalMatch, MatchObservation
+from oddsmith.insights import dedupe
 
 
 CSV = """Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,HTHG,HTAG,HS,AS,HST,AST,HC,AC,HY,AY,HR,AR,MaxCH,MaxCD,MaxCA,MaxC>2.5,MaxC<2.5
@@ -129,3 +130,36 @@ def test_second_tier_divisions_are_supported():
     observations, _ = parse_csv(CSV.replace("E0,", "D2,"), season=2025)
 
     assert observations[0].league == "Bundesliga2"
+
+
+def test_kickoff_times_are_uk_local_and_stored_as_utc():
+    summer, _ = parse_csv(CSV, season=2025)  # 12:30 BST
+    winter, _ = parse_csv(CSV.replace("16/08/2025", "06/12/2025"), season=2025)
+    untimed, _ = parse_csv(CSV.replace(",12:30,", ",,"), season=2025)
+
+    assert summer[0].kickoff_utc == datetime(2025, 8, 16, 11, 30, tzinfo=UTC)
+    assert winter[0].kickoff_utc == datetime(2025, 12, 6, 12, 30, tzinfo=UTC)
+    assert untimed[0].kickoff_utc == datetime(2025, 8, 16, 12, 0, tzinfo=UTC)
+
+
+def test_late_summer_kickoff_deduplicates_against_api_football():
+    document = (
+        "Country,League,Season,Date,Time,Home,Away,HG,AG,Res\n"
+        "USA,MLS,2026,30/08/2026,00:30,Inter Miami,CF Montreal,2,0,H\n"
+    )
+    (csv_row,), _ = parse_extra_csv(document, code="USA")
+    live_row = MatchObservation(
+        source_key="api_football_result:1",
+        source="api_football_result",
+        league="Major League Soccer",
+        season=2026,
+        kickoff_utc=datetime(2026, 8, 29, 23, 30, tzinfo=UTC),
+        home_team="Inter Miami",
+        away_team="CF Montreal",
+        home_goals=2,
+        away_goals=0,
+        raw_payload={},
+    )
+
+    assert csv_row.kickoff_utc == live_row.kickoff_utc
+    assert len(dedupe([csv_row, live_row])) == 1

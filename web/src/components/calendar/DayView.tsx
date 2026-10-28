@@ -67,10 +67,10 @@ export function DayView({ date }: { date: string }) {
     isLoading: fixturesLoading,
     isError: fixturesError,
   } = useQuery({
-    // Past days are review-only: read the cache rather than spending odds-API
-    // quota re-fetching a card that has already been played.
-    queryKey: ["fixtures", date, date, isPast],
-    queryFn: () => fetchFixtures(date, date, isPast),
+    // Stored prices change only when the sync runs (every 6h).
+    queryKey: ["fixtures", date, date],
+    queryFn: () => fetchFixtures(date, date),
+    staleTime: 5 * 60_000,
   });
 
   const { data: slips } = useQuery({ queryKey: ["slips"], queryFn: fetchSlips });

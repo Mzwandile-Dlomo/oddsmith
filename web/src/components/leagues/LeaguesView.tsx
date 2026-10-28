@@ -38,17 +38,21 @@ export function LeaguesView({ initialLeague }: { initialLeague: string }) {
   const [league, setLeague] = useState(initialLeague);
   const [season, setSeason] = useState<number | undefined>(undefined);
 
+  // Results only change when the daily sync runs, so keep them for a while.
   const { data: allLeagues } = useQuery({
     queryKey: ["history-leagues"],
     queryFn: fetchHistoryLeagues,
+    staleTime: 60 * 60_000,
   });
   const table = useQuery({
     queryKey: ["league-table", league, season],
     queryFn: () => fetchLeagueTable(league, season),
+    staleTime: 30 * 60_000,
   });
   const results = useQuery({
     queryKey: ["history-matches", league, "", 10],
     queryFn: () => fetchHistoryMatches(league, undefined, 10),
+    staleTime: 30 * 60_000,
   });
 
   // API-Football's names for the big five ("Premier League", "Serie A") hold a

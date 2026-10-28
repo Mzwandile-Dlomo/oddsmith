@@ -17,6 +17,7 @@ import io
 import ssl
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -61,6 +62,8 @@ EXTRA_LEAGUES = {
     "BRA": "Brazil",
     "ARG": "Argentina",
 }
+
+_UK = ZoneInfo("Europe/London")
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{season_code}/{division}.csv"
 EXTRA_URL = "https://www.football-data.co.uk/new/{code}.csv"
@@ -203,18 +206,21 @@ def _kickoff(row: dict[str, str]) -> datetime | None:
     if parsed_date is None:
         return None
 
-    parsed_time = time(12, 0)
     raw_time = _first(row, "Time")
     if raw_time:
         for pattern in ("%H:%M", "%H:%M:%S"):
             try:
                 parsed_time = datetime.strptime(raw_time, pattern).time()
-                break
             except ValueError:
                 continue
-    # The archive does not carry a timezone. Noon UTC is used when time is absent;
-    # chronological daily features remain valid and the raw value is preserved.
-    return datetime.combine(parsed_date, parsed_time, tzinfo=UTC)
+            # Times are UK local for every league, BST in summer. Read as UTC,
+            # a late kickoff in the Americas lands on the next day and no longer
+            # deduplicates against API-Football's copy of the same match.
+            local = datetime.combine(parsed_date, parsed_time, tzinfo=_UK)
+            return local.astimezone(UTC)
+    # Older seasons carry no time. Noon UTC keeps the date stable; chronological
+    # daily features remain valid and the raw value is preserved.
+    return datetime.combine(parsed_date, time(12, 0), tzinfo=UTC)
 
 
 def _source_key(division: str, season: int, kickoff: datetime, home: str, away: str) -> str:

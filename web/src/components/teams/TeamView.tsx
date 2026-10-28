@@ -15,6 +15,8 @@ export function TeamView({ team, league }: { team: string; league: string | null
     queryKey: ["league-table", league, undefined],
     queryFn: () => fetchLeagueTable(league as string),
     enabled: league !== null,
+    // Results only change when the daily sync runs, so keep them for a while.
+    staleTime: 30 * 60_000,
   });
   const seasonRow = table.data?.rows.find((r) => r.team === team);
   const position = seasonRow ? (table.data?.rows.indexOf(seasonRow) ?? -1) + 1 : null;
@@ -25,10 +27,12 @@ export function TeamView({ team, league }: { team: string; league: string | null
     queryFn: () => fetchTeamStats(team, league ?? undefined),
     enabled: league === null || (table.isFetched && !seasonRow),
     retry: false,
+    staleTime: 30 * 60_000,
   });
   const matches = useQuery({
     queryKey: ["history-matches", league ?? "", team, 20],
     queryFn: () => fetchHistoryMatches(league ?? undefined, team, 20),
+    staleTime: 30 * 60_000,
   });
 
   const stats = seasonRow ?? allTime.data;

@@ -7,7 +7,6 @@ no qualifying value selection records no ticket rather than padding an acca.
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from datetime import UTC, datetime, time
 from pathlib import Path
@@ -16,19 +15,19 @@ from sqlmodel import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from oddsmith.api import daily_acca, get_providers
+from oddsmith.api import daily_acca
 from oddsmith.db import get_engine, init_db
 from oddsmith.models import MarketType
 from oddsmith.odds_model.target_acca import MAX_PLAUSIBLE_EDGE
 
 
-async def _run() -> int:
+def _run() -> int:
     init_db()
     now = datetime.now(UTC)
     start = datetime.combine(now.date(), time.min, tzinfo=UTC)
     end = datetime.combine(now.date(), time.max, tzinfo=UTC)
     with Session(get_engine()) as session:
-        ticket = await daily_acca(
+        ticket = daily_acca(
             target_odds=1.5,
             max_legs=4,
             min_leg_prob=0.55,
@@ -44,7 +43,6 @@ async def _run() -> int:
                 MarketType.BTTS,
             ],
             auto_track=True,
-            providers=get_providers(),
             session=session,
         )
     if ticket.auto_tracked:
@@ -61,4 +59,4 @@ async def _run() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(_run()))
+    raise SystemExit(_run())

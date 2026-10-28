@@ -25,7 +25,7 @@ from datetime import UTC, date as date_type, datetime, time, timedelta
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from oddsmith.config import get_settings
@@ -109,13 +109,32 @@ def get_providers() -> list[OddsProvider]:
 
 
 _model_service: PoissonModelService | None = None
+_model_history_version: tuple[int, int | None] | None = None
+_model_checked_at = 0.0
+# The version check is a DB round trip (~200ms to Supabase), so a trained model
+# is trusted for this long before we look for newly synced results.
+MODEL_VERSION_CHECK_SECONDS = 300
+
+
+def _history_version(session: Session) -> tuple[int, int | None]:
+    """Changes whenever the sync jobs add results; one cheap query."""
+    count, max_id = session.exec(
+        select(func.count(HistoricalMatch.id), func.max(HistoricalMatch.id))
+    ).one()
+    return int(count), max_id
 
 
 def get_model_service(session: Session = Depends(get_session)) -> PoissonModelService:
-    """Train the odds model once from stored history and reuse it across requests."""
-    global _model_service
-    if _model_service is None or not _model_service.is_trained():
+    """Train the odds model from stored history; retrain once the sync adds results."""
+    global _model_service, _model_history_version, _model_checked_at
+    now = time_module.monotonic()
+    if _model_service is not None and now - _model_checked_at < MODEL_VERSION_CHECK_SECONDS:
+        return _model_service
+    version = _history_version(session)
+    _model_checked_at = now
+    if _model_service is None or version != _model_history_version:
         _model_service = train_from_db(session)
+        _model_history_version = version
     return _model_service
 
 
@@ -268,26 +287,28 @@ async def list_fixtures(
     markets: list[MarketType] | None = Query(default=None),
     refresh: bool = Query(default=False),
     model: bool = Query(default=False),
-    cached_only: bool = Query(default=False),
     providers: list[OddsProvider] = Depends(get_providers),
     session: Session = Depends(get_session),
 ) -> list[Fixture]:
+    """Stored fixtures for the window. The scheduled sync jobs fill the DB.
+
+    Browsing never spends provider quota; only an explicit ``refresh=true`` does.
+    """
     start = date_from or datetime.now(UTC)
     end = date_to or (start + timedelta(days=3))
     if end < start:
         raise HTTPException(status_code=400, detail="date_to must be after date_from")
-    if cached_only:
-        # Reviewing a past day must not spend provider quota; serve what we have.
-        fixtures = read_cached_fixtures(session, date_from=start, date_to=end)
-    else:
+    if refresh:
         fixtures = await get_cached_fixtures(
             session,
             providers,
             date_from=start,
             date_to=end,
             markets=markets,
-            force_refresh=refresh,
+            force_refresh=True,
         )
+    else:
+        fixtures = read_cached_fixtures(session, date_from=start, date_to=end)
     scheduled = read_scheduled_fixtures(session, date_from=start, date_to=end)
     fixtures = _merge_with_schedule(fixtures, scheduled)
     if model:
@@ -296,24 +317,12 @@ async def list_fixtures(
 
 
 @app.get("/fixtures/{fixture_id}/markets", response_model=Fixture)
-async def fixture_markets(
-    fixture_id: str,
-    date_from: datetime | None = Query(default=None),
-    date_to: datetime | None = Query(default=None),
-    providers: list[OddsProvider] = Depends(get_providers),
-    session: Session = Depends(get_session),
-) -> Fixture:
+def fixture_markets(fixture_id: str, session: Session = Depends(get_session)) -> Fixture:
+    """Stored markets for one fixture; never a provider call."""
     cached = find_cached_fixture(session, fixture_id)
-    if cached is not None:
-        return cached
-
-    start = date_from or datetime.now(UTC)
-    end = date_to or (start + timedelta(days=7))
-    fixtures = await get_cached_fixtures(session, providers, date_from=start, date_to=end)
-    for fixture in fixtures:
-        if fixture.id == fixture_id:
-            return fixture
-    raise HTTPException(status_code=404, detail="fixture not found in window")
+    if cached is None:
+        raise HTTPException(status_code=404, detail="fixture not found")
+    return cached
 
 
 def _stored_fixture(session: Session, fixture_id: str) -> Fixture:
@@ -715,11 +724,10 @@ def _acca_to_view(acca: Acca, fixtures_by_id: dict[str, Fixture] | None = None) 
 
 
 @app.get("/acca/weekend", response_model=AccaView)
-async def weekend_acca(
+def weekend_acca(
     legs: int = Query(default=5, ge=1, le=10),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
-    providers: list[OddsProvider] = Depends(get_providers),
     session: Session = Depends(get_session),
 ) -> AccaView:
     """Auto-build an accumulator from the highest positive-EV model picks.
@@ -730,7 +738,7 @@ async def weekend_acca(
     """
     start = date_from or datetime.now(UTC)
     end = date_to or (start + timedelta(days=4))
-    fixtures = await get_cached_fixtures(session, providers, date_from=start, date_to=end)
+    fixtures = read_cached_fixtures(session, date_from=start, date_to=end)
     service = get_model_service(session)
     _enrich_with_model(fixtures, service)
 
@@ -781,7 +789,7 @@ def _collect_candidates(
 
 
 @app.get("/acca/daily", response_model=DailyAccaView)
-async def daily_acca(
+def daily_acca(
     target_odds: float = Query(default=1.5, gt=1.0, le=20.0),
     max_legs: int = Query(default=4, ge=1, le=8),
     min_leg_prob: float = Query(default=0.55, ge=0.0, lt=1.0),
@@ -793,7 +801,6 @@ async def daily_acca(
     date_to: datetime | None = Query(default=None),
     markets: list[MarketType] | None = Query(default=None),
     auto_track: bool = Query(default=False),
-    providers: list[OddsProvider] = Depends(get_providers),
     session: Session = Depends(get_session),
 ) -> DailyAccaView:
     """Build today's short-priced "banker" slip and size the stake for it.
@@ -825,13 +832,9 @@ async def daily_acca(
             detail=f"Markets not modelled for daily slips: {names}",
         )
 
-    fixtures = await get_cached_fixtures(
-        session,
-        providers,
-        date_from=start,
-        date_to=end,
-        markets=list(requested_markets),
-    )
+    # Reads the board the sync jobs stored; the home page loads this on every
+    # visit, so it must never spend provider quota.
+    fixtures = read_cached_fixtures(session, date_from=start, date_to=end)
     service = get_model_service(session)
     _enrich_with_model(fixtures, service)
     candidates = _collect_candidates(
@@ -1042,12 +1045,21 @@ def _daily_note(acca: TargetAcca, *, model_trained: bool = True, fixtures: int =
     )
 
 
+# The walk-forward refit takes ~40s and depends only on stored history, so the
+# result is kept until the sync jobs add results (the history version changes).
+_backtest_cache: dict[tuple[float, tuple[int, int | None]], BacktestView] = {}
+
+
 @app.get("/model/backtest", response_model=BacktestView)
 def model_backtest(
     train_fraction: float = Query(default=0.7, gt=0.0, lt=1.0),
     session: Session = Depends(get_session),
 ) -> BacktestView:
     """Honest walk-forward accuracy on stored history. Not a promise of 80%."""
+    cache_key = (train_fraction, _history_version(session))
+    cached = _backtest_cache.get(cache_key)
+    if cached is not None:
+        return cached
     settings = get_settings()
     rows = list(session.exec(select(HistoricalMatch).order_by(HistoricalMatch.kickoff_utc)))
     results = [MatchResult(r.home_team, r.away_team, r.home_goals, r.away_goals) for r in rows]
@@ -1058,7 +1070,7 @@ def model_backtest(
         decay=settings.model_decay,
         shrinkage=settings.model_shrinkage,
     )
-    return BacktestView(
+    view = BacktestView(
         matches_scored=bt.matches_scored,
         hit_rate=bt.hit_rate,
         brier=bt.brier,
@@ -1066,6 +1078,9 @@ def model_backtest(
         value_bets=bt.value_bets,
         note="1X2 walk-forward on historical results. ~54% is competitive; not 80%.",
     )
+    _backtest_cache.clear()  # results for an older history version are never asked for again
+    _backtest_cache[cache_key] = view
+    return view
 
 
 def _observation_count(session: Session, *conditions: object) -> int:
@@ -1107,9 +1122,24 @@ def _settled_snapshot_fixture_count(session: Session, market_type: MarketType) -
     )
 
 
+# Readiness is ~17 aggregate queries (~10s over the Supabase link) and its inputs
+# change only when the sync jobs run, so it is served from memory for a while.
+READINESS_CACHE_SECONDS = 300
+_readiness_cache: dict[str, tuple[float, ModelReadinessView]] = {}
+
+
 @app.get("/model/readiness", response_model=ModelReadinessView)
 def model_readiness(session: Session = Depends(get_session)) -> ModelReadinessView:
     """Expose evidence and gaps behind the model, not a cosmetic "AI ready" flag."""
+    cached = _readiness_cache.get("latest")
+    if cached and time_module.monotonic() - cached[0] < READINESS_CACHE_SECONDS:
+        return cached[1]
+    view = _build_model_readiness(session)
+    _readiness_cache["latest"] = (time_module.monotonic(), view)
+    return view
+
+
+def _build_model_readiness(session: Session) -> ModelReadinessView:
     total = _observation_count(session)
     baseline_total = int(session.exec(select(func.count()).select_from(HistoricalMatch)).one())
     summary = session.exec(
@@ -1309,8 +1339,9 @@ def paper_performance(session: Session = Depends(get_session)) -> PaperPerforman
     won = [slip for slip in settled if slip.result is SlipResult.WON]
     returned = 0.0
     settled_odds: list[float] = []
+    legs_by_slip = _load_legs_by_slip(session, settled)
     for slip in settled:
-        legs = _load_legs(session, slip.id or 0)
+        legs = legs_by_slip.get(slip.id or 0, [])
         inputs = _leg_inputs(legs)
         returned += settled_return(1.0, inputs)
         settled_odds.append(combined_odds([leg.price for leg in legs]))
@@ -1390,7 +1421,12 @@ class HistoryMatchView(BaseModel):
 
 
 def _history_match_rows(
-    session: Session, *, league: str | None = None, season: int | None = None
+    session: Session,
+    *,
+    league: str | None = None,
+    season: int | None = None,
+    team: str | None = None,
+    newest: int | None = None,
 ) -> list[HistoryMatchView]:
     """Combine long-run CSV history with recently ingested cup/live results.
 
@@ -1399,17 +1435,34 @@ def _history_match_rows(
     must see both sources.  Prefer an observation when both describe the same
     fixture because it is the newer, richer source row.
     """
-    # Filters run in SQL: a league table should not pull every row from both tables.
-    historical = select(HistoricalMatch)
-    observed = select(MatchObservation)
-    if league is not None:
-        historical = historical.where(HistoricalMatch.league == league)
-        observed = observed.where(MatchObservation.league == league)
-    if season is not None:
-        historical = historical.where(HistoricalMatch.season == season)
-        observed = observed.where(MatchObservation.season == season)
+    # Filters run in SQL, and only the columns the view needs are selected:
+    # MatchObservation carries a large raw_payload per row, and hydrating ~50k
+    # full rows over the Supabase link took minutes.
+    def _query(table):
+        query = select(
+            table.id,
+            table.league,
+            table.season,
+            table.kickoff_utc,
+            table.home_team,
+            table.away_team,
+            table.home_goals,
+            table.away_goals,
+        )
+        if league is not None:
+            query = query.where(table.league == league)
+        if season is not None:
+            query = query.where(table.season == season)
+        if team is not None:
+            query = query.where(or_(table.home_team == team, table.away_team == team))
+        if newest is not None:
+            # De-duplication only removes rows, so the newest N of the merged
+            # result always lie within the newest N of each source.
+            query = query.order_by(table.kickoff_utc.desc()).limit(newest)
+        return query
+
     rows: dict[tuple[str, datetime, str, str], HistoryMatchView] = {}
-    for match in session.exec(historical):
+    for match in session.exec(_query(HistoricalMatch)):
         key = (match.league, match.kickoff_utc, match.home_team, match.away_team)
         rows[key] = HistoryMatchView(
             id=match.id or 0,
@@ -1421,7 +1474,7 @@ def _history_match_rows(
             home_goals=match.home_goals,
             away_goals=match.away_goals,
         )
-    for match in session.exec(observed):
+    for match in session.exec(_query(MatchObservation)):
         key = (match.league, match.kickoff_utc, match.home_team, match.away_team)
         rows[key] = HistoryMatchView(
             # Keep IDs unambiguous when a browser renders mixed source rows.
@@ -1454,7 +1507,10 @@ class TeamStatsView(BaseModel):
 
 @app.get("/history/leagues", response_model=list[str])
 def history_leagues(session: Session = Depends(get_session)) -> list[str]:
-    return sorted({match.league for match in _history_match_rows(session)})
+    return sorted(
+        set(session.exec(select(HistoricalMatch.league).distinct()))
+        | set(session.exec(select(MatchObservation.league).distinct()))
+    )
 
 
 @app.get("/history/matches", response_model=list[HistoryMatchView])
@@ -1465,11 +1521,9 @@ def history_matches(
     offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ) -> list[HistoryMatchView]:
-    rows = _history_match_rows(session)
-    if league:
-        rows = [row for row in rows if row.league == league]
-    if team:
-        rows = [row for row in rows if team in (row.home_team, row.away_team)]
+    rows = _history_match_rows(
+        session, league=league or None, team=team or None, newest=offset + limit
+    )
     return rows[offset : offset + limit]
 
 
@@ -1479,11 +1533,7 @@ def history_team_stats(
     league: str | None = Query(default=None),
     session: Session = Depends(get_session),
 ) -> TeamStatsView:
-    rows = [
-        row
-        for row in _history_match_rows(session)
-        if team in (row.home_team, row.away_team) and (league is None or row.league == league)
-    ]
+    rows = _history_match_rows(session, league=league, team=team)
     rows.sort(key=lambda row: row.kickoff_utc)
     if not rows:
         raise HTTPException(status_code=404, detail="team not found in history")
@@ -1597,6 +1647,16 @@ def _load_legs(session: Session, slip_id: int) -> list[SlipLeg]:
     return list(session.exec(select(SlipLeg).where(SlipLeg.slip_id == slip_id)))
 
 
+def _load_legs_by_slip(session: Session, slips: list[Slip]) -> dict[int, list[SlipLeg]]:
+    """Every leg for many slips in one query; a query per slip costs a round trip each."""
+    ids = [slip.id for slip in slips if slip.id is not None]
+    legs: dict[int, list[SlipLeg]] = {slip_id: [] for slip_id in ids}
+    if ids:
+        for leg in session.exec(select(SlipLeg).where(SlipLeg.slip_id.in_(ids))):
+            legs[leg.slip_id].append(leg)
+    return legs
+
+
 @app.post("/slips", response_model=SlipView, status_code=201)
 def create_slip(payload: SlipCreate, session: Session = Depends(get_session)) -> SlipView:
     settings = get_settings()
@@ -1642,7 +1702,8 @@ def list_slips(session: Session = Depends(get_session)) -> list[SlipView]:
             select(Slip).where(Slip.user_id == DEFAULT_USER_ID).order_by(Slip.created_at.desc())
         )
     )
-    return [_to_slip_view(slip, _load_legs(session, slip.id or 0)) for slip in slips]
+    legs = _load_legs_by_slip(session, slips)
+    return [_to_slip_view(slip, legs.get(slip.id or 0, [])) for slip in slips]
 
 
 @app.get("/slips/{slip_id}", response_model=SlipView)
@@ -1944,7 +2005,7 @@ def calendar(
         scheduled_by_day.setdefault(aware.astimezone(UTC).date(), []).append(fixture)
 
     slips = list(session.exec(select(Slip).where(Slip.user_id == DEFAULT_USER_ID)))
-    slip_legs = {slip.id: _load_legs(session, slip.id or 0) for slip in slips}
+    slip_legs = _load_legs_by_slip(session, slips)
     slips_by_day: dict[date_type, list[Slip]] = {}
     for slip in slips:
         day = _slip_match_day(slip_legs.get(slip.id, []), slip)

@@ -222,8 +222,9 @@ export function MatchView({ id, date }: { id: string; date: string | null }) {
 
   // Research reads stored data only; prices are refreshed by the scheduled sync.
   const fixturesQuery = useQuery({
-    queryKey: ["fixtures", from, to, true],
-    queryFn: () => fetchFixtures(from, to, true),
+    queryKey: ["fixtures", from, to],
+    queryFn: () => fetchFixtures(from, to),
+    staleTime: 5 * 60_000,
   });
   const insightsQuery = useQuery({
     queryKey: ["insights", id, 5],

@@ -9,6 +9,7 @@ from oddsmith import api as api_module
 from oddsmith import db as db_module
 from oddsmith.api import app, get_providers
 from oddsmith.db import (
+    CachedFixture,
     CornerEvaluationSnapshot,
     HistoricalMatch,
     MatchObservation,
@@ -19,33 +20,59 @@ from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider
 
 
+def _stub_fixture(kickoff: datetime) -> Fixture:
+    return Fixture(
+        id="stub:1",
+        home_team="Arsenal",
+        away_team="Chelsea",
+        kickoff_utc=kickoff,
+        league="EPL",
+        provider="stub",
+        markets=[
+            Market(
+                type=MarketType.MATCH_WINNER,
+                outcomes=[
+                    Outcome(name="Home", price=2.1),
+                    Outcome(name="Draw", price=3.2),
+                    Outcome(name="Away", price=3.4),
+                ],
+            )
+        ],
+    )
+
+
 class _StubProvider(OddsProvider):
     name = "stub"
 
     async def list_fixtures(self, *, date_from, date_to, markets=None):
-        return [
-            Fixture(
-                id="stub:1",
-                home_team="Arsenal",
-                away_team="Chelsea",
-                kickoff_utc=date_from,
-                league="EPL",
-                provider="stub",
-                markets=[
-                    Market(
-                        type=MarketType.MATCH_WINNER,
-                        outcomes=[
-                            Outcome(name="Home", price=2.1),
-                            Outcome(name="Draw", price=3.2),
-                            Outcome(name="Away", price=3.4),
-                        ],
-                    )
-                ],
-            )
-        ]
+        return [_stub_fixture(date_from)]
 
     async def get_markets(self, fixture_id):
         return []
+
+
+def _store_stub_fixture(kickoff: datetime) -> None:
+    """What the scheduled sync leaves behind: a priced fixture in the DB cache."""
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            CachedFixture(
+                fixture_id="stub:1",
+                kickoff_utc=kickoff.astimezone(UTC).replace(tzinfo=None),
+                payload=_stub_fixture(kickoff).model_dump(mode="json"),
+            )
+        )
+        session.commit()
+
+
+def _fail_if_provider_called(monkeypatch) -> list[bool]:
+    calls: list[bool] = []
+
+    async def _tracking(*args, **kwargs):
+        calls.append(True)
+        return []
+
+    monkeypatch.setattr(api_module, "get_cached_fixtures", _tracking)
+    return calls
 
 
 @pytest.fixture
@@ -57,9 +84,14 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db_module, "get_engine", lambda: engine)
     SQLModel.metadata.create_all(engine)
 
-    # The model service is cached in a module global; reset it so a model trained
-    # in one test cannot leak into the next.
+    # The model service and response caches are module globals; reset them so
+    # state from one test cannot leak into the next.
     monkeypatch.setattr(api_module, "_model_service", None)
+    monkeypatch.setattr(api_module, "_model_history_version", None)
+    monkeypatch.setattr(api_module, "_model_checked_at", 0.0)
+    monkeypatch.setattr(api_module, "_backtest_cache", {})
+    monkeypatch.setattr(api_module, "_readiness_cache", {})
+    monkeypatch.setattr(api_module, "_research_cache", {})
 
     app.dependency_overrides[get_providers] = lambda: [_StubProvider()]
     with TestClient(app) as c:
@@ -71,12 +103,37 @@ def test_health(client):
     assert client.get("/health").json() == {"status": "ok"}
 
 
-def test_list_fixtures(client):
+def test_list_fixtures_serves_what_the_sync_stored(client, monkeypatch):
+    _store_stub_fixture(datetime.now(UTC) + timedelta(hours=1))
+    calls = _fail_if_provider_called(monkeypatch)
+
     resp = client.get("/fixtures")
+
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
     assert data[0]["home_team"] == "Arsenal"
+    assert calls == []
+
+
+def test_list_fixtures_reaches_providers_only_on_explicit_refresh(client):
+    assert client.get("/fixtures").json() == []
+
+    refreshed = client.get("/fixtures", params={"refresh": True}).json()
+
+    assert [f["id"] for f in refreshed] == ["stub:1"]
+    # The refresh was stored, so plain browsing now sees it too.
+    assert [f["id"] for f in client.get("/fixtures").json()] == ["stub:1"]
+
+
+def test_fixture_markets_reads_the_store_only(client, monkeypatch):
+    calls = _fail_if_provider_called(monkeypatch)
+    assert client.get("/fixtures/stub:1/markets").status_code == 404
+
+    _store_stub_fixture(datetime.now(UTC) + timedelta(hours=1))
+
+    assert client.get("/fixtures/stub:1/markets").json()["home_team"] == "Arsenal"
+    assert calls == []
 
 
 def test_model_readiness_is_honest_when_dataset_is_empty(client):
@@ -181,6 +238,41 @@ def test_results_history_includes_ingested_champions_and_europa_league_results(c
     assert "UEFA Europa League" in leagues
     assert champions[0]["home_team"] == "Arsenal"
     assert europa[0]["home_team"] == "Roma"
+
+
+def test_history_filters_by_team_across_both_sources(client):
+    _seed_history(db_module.get_engine())
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            MatchObservation(
+                source_key="test:team-filter",
+                source="api_football_result",
+                league="UEFA Champions League",
+                season=2026,
+                kickoff_utc=datetime(2026, 9, 10, tzinfo=UTC),
+                home_team="Bayern Munich",
+                away_team="Chelsea",
+                home_goals=1,
+                away_goals=1,
+                raw_payload={},
+            )
+        )
+        session.commit()
+
+    chelsea = client.get("/history/matches", params={"team": "Chelsea", "limit": 200}).json()
+    roma = client.get("/history/matches", params={"team": "Roma"}).json()
+    stats = client.get("/history/teams/Chelsea/stats").json()
+
+    assert len(chelsea) == 31
+    assert chelsea[0]["home_team"] == "Bayern Munich"  # newest first
+    page = client.get(
+        "/history/matches", params={"team": "Chelsea", "limit": 5, "offset": 1}
+    ).json()
+    assert [m["id"] for m in page] == [m["id"] for m in chelsea[1:6]]
+    assert roma == []
+    assert stats["played"] == 31
+    assert stats["drawn"] == 1
+    assert sorted(client.get("/history/leagues").json()) == ["EPL", "UEFA Champions League"]
 
 
 def test_paper_performance_uses_only_generated_paper_tickets_and_unit_stakes(client):
@@ -475,6 +567,7 @@ def _seed_history(engine, league="EPL"):
 
 
 def test_daily_acca_returns_a_staking_plan(client):
+    _store_stub_fixture(datetime.now(UTC) + timedelta(hours=1))
     body = client.get("/acca/daily").json()
 
     assert body["target_odds"] == 1.5
@@ -501,6 +594,50 @@ def test_daily_acca_with_no_model_returns_an_honest_empty_slip(client):
     assert body["target_met"] is False
     assert body["staking"]["recommended_stake"] == 0.0
     assert "no historical match data" in body["note"]
+
+
+def test_accas_never_call_a_provider(client, monkeypatch):
+    """The home page builds the daily acca on every visit; it must read the store."""
+    _store_stub_fixture(datetime.now(UTC) + timedelta(hours=1))
+    calls = _fail_if_provider_called(monkeypatch)
+
+    assert client.get("/acca/daily").json()["fixtures_scanned"] == 1
+    assert client.get("/acca/weekend").status_code == 200
+    assert calls == []
+
+
+def test_model_retrains_once_new_history_is_synced(client):
+    engine = db_module.get_engine()
+    with Session(engine) as session:
+        assert api_module.get_model_service(session).is_trained() is False
+
+        _seed_history(engine)
+        # Within the check interval the trained model is trusted as-is...
+        assert api_module.get_model_service(session).is_trained() is False
+
+        # ...and once it lapses, the new history version triggers a retrain.
+        api_module._model_checked_at = 0.0
+        assert api_module.get_model_service(session).is_trained() is True
+
+
+def test_backtest_is_reused_until_history_changes(client, monkeypatch):
+    runs = []
+    real_backtest = api_module.backtest_1x2
+
+    def _counting(*args, **kwargs):
+        runs.append(True)
+        return real_backtest(*args, **kwargs)
+
+    monkeypatch.setattr(api_module, "backtest_1x2", _counting)
+    _seed_history(db_module.get_engine())
+
+    first = client.get("/model/backtest").json()
+    assert client.get("/model/backtest").json() == first
+    assert len(runs) == 1
+
+    _seed_history(db_module.get_engine())
+    client.get("/model/backtest")
+    assert len(runs) == 2
 
 
 def test_daily_acca_echoes_its_parameters(client):
@@ -603,6 +740,7 @@ def test_daily_acca_auto_archives_one_canonical_paper_prediction_per_day(
             )
         ],
     )
+    _store_stub_fixture(datetime(2026, 7, 22, 15, tzinfo=UTC))
     params = {
         "date_from": "2026-07-22T00:00:00Z",
         "date_to": "2026-07-22T23:59:59Z",
@@ -716,7 +854,6 @@ def test_calendar_and_fixture_list_include_persisted_schedule(client):
             # midnight and must still cover the complete calendar day.
             "date_from": "2026-09-04",
             "date_to": "2026-09-04",
-            "cached_only": True,
         },
     ).json()
 
@@ -769,27 +906,6 @@ def test_calendar_rejects_a_backwards_window(client):
 def test_calendar_rejects_a_window_wider_than_the_cap(client):
     resp = client.get("/calendar", params={"date_from": "2026-01-01", "date_to": "2026-12-31"})
     assert resp.status_code == 422
-
-
-def test_fixtures_cached_only_does_not_call_a_provider(client, monkeypatch):
-    """`cached_only` is what keeps browsing back through the calendar free."""
-    called = False
-
-    original = api_module.get_cached_fixtures
-
-    async def _tracking(*args, **kwargs):
-        nonlocal called
-        called = True
-        return await original(*args, **kwargs)
-
-    monkeypatch.setattr(api_module, "get_cached_fixtures", _tracking)
-
-    assert client.get("/fixtures", params={"cached_only": True}).json() == []
-    assert called is False
-
-    # Without the flag the same window does reach the provider.
-    assert client.get("/fixtures").status_code == 200
-    assert called is True
 
 
 def test_fixture_insights_for_a_scheduled_fixture(client):

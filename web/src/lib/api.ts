@@ -41,17 +41,15 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+/** Stored fixtures only — the scheduled sync fills the DB, browsing never spends quota. */
 export async function fetchFixtures(
   dateFrom?: string,
-  dateTo?: string,
-  /** Read the cache without calling a provider — use when reviewing past days. */
-  cachedOnly = false
+  dateTo?: string
 ): Promise<Fixture[]> {
   const params = new URLSearchParams();
   if (dateFrom) params.set("date_from", dateFrom);
   if (dateTo) params.set("date_to", dateTo);
   params.set("model", "true");
-  if (cachedOnly) params.set("cached_only", "true");
   const qs = params.toString();
   return request<Fixture[]>(`/fixtures${qs ? `?${qs}` : ""}`);
 }
