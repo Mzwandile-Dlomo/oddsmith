@@ -24,6 +24,7 @@ def odds_settings():
         api_football_key="test-key",
         api_football_base_url="https://v3.football.api-sports.io",
         database_url="sqlite:///:memory:",
+        the_odds_api_min_interval_seconds=0,
     )
 
 
@@ -316,6 +317,48 @@ async def test_api_football_collects_completed_result_and_statistics(odds_settin
     assert enriched.away_corners == 4
     assert enriched.home_shots_on_target == 6
     assert stats_quota.requests_remaining == 97
+
+
+@respx.mock
+async def test_the_odds_api_waits_and_retries_a_rate_limited_request(odds_settings):
+    events_route = respx.get(url__regex=r".*/sports/soccer_epl/events(\?.*)?$").mock(
+        side_effect=[
+            httpx.Response(429, headers={"retry-after": "0"}),
+            httpx.Response(200, json=[]),
+        ]
+    )
+
+    async with httpx.AsyncClient(base_url=odds_settings.the_odds_api_base_url) as client:
+        provider = TheOddsApiProvider(
+            settings=odds_settings, client=client, sports=("soccer_epl",)
+        )
+        fixtures = await provider.list_fixtures(
+            date_from=datetime(2026, 7, 25, tzinfo=UTC),
+            date_to=datetime(2026, 7, 26, tzinfo=UTC),
+        )
+
+    assert events_route.call_count == 2
+    assert fixtures == []
+
+
+@respx.mock
+async def test_the_odds_api_gives_up_after_its_retries(odds_settings):
+    from oddsmith.providers.base import ProviderError
+
+    settings = odds_settings.model_copy(update={"the_odds_api_max_retries": 2})
+    events_route = respx.get(url__regex=r".*/sports/soccer_epl/events(\?.*)?$").mock(
+        return_value=httpx.Response(429, headers={"retry-after": "0"})
+    )
+
+    async with httpx.AsyncClient(base_url=settings.the_odds_api_base_url) as client:
+        provider = TheOddsApiProvider(settings=settings, client=client, sports=("soccer_epl",))
+        with pytest.raises(ProviderError, match="429"):
+            await provider.list_fixtures(
+                date_from=datetime(2026, 7, 25, tzinfo=UTC),
+                date_to=datetime(2026, 7, 26, tzinfo=UTC),
+            )
+
+    assert events_route.call_count == 3
 
 
 async def test_provider_missing_key_raises():

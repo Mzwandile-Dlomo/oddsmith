@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     the_odds_api_base_url: str = "https://api.the-odds-api.com/v4"
     # Regions to pull bookmaker odds for (comma-separated per the API).
     the_odds_api_regions: str = "uk,eu"
+    # The rate limit counts requests, not credits, so the free /events lookups
+    # are spaced too. A 429 waits (Retry-After, else a backoff) and retries.
+    the_odds_api_min_interval_seconds: float = 1.0
+    the_odds_api_max_retries: int = 3
 
     # --- API-Football (v3) ---
     api_football_key: str | None = Field(default=None, repr=False)

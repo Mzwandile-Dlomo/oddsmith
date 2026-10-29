@@ -20,11 +20,16 @@ Quota: ``/sports`` and ``/events`` are free; an ``/odds`` call costs
 markets x regions credits. ``list_fixtures`` asks ``/events`` which sports have
 matches in the window and only pays for those, each reserved with the shared
 ``QuotaGuard`` first.
+
+Rate limit: separate from credits, the API answers 429 to requests sent too
+close together. Every call goes through ``_get``, one at a time and spaced by
+``the_odds_api_min_interval_seconds``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -139,6 +144,8 @@ class TheOddsApiProvider(OddsProvider):
         self._client = client
         self._sports = sports
         self._guard = guard
+        self._pace = asyncio.Lock()
+        self._last_request = float("-inf")
 
     @property
     def guard(self) -> QuotaGuard:
@@ -157,6 +164,24 @@ class TheOddsApiProvider(OddsProvider):
         if remaining is not None:
             self.guard.observe(int(float(remaining)))
 
+    async def _get(
+        self, client: httpx.AsyncClient, path: str, params: dict
+    ) -> httpx.Response:
+        """Send one request, spaced from the last; a 429 waits and retries."""
+        interval = self._settings.the_odds_api_min_interval_seconds
+        retries = self._settings.the_odds_api_max_retries
+        for attempt in range(retries + 1):
+            async with self._pace:
+                wait = self._last_request + interval - time.monotonic()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                response = await client.get(path, params=params)
+                self._last_request = time.monotonic()
+            if response.status_code != 429 or attempt == retries:
+                return response
+            await asyncio.sleep(_retry_after(response, attempt))
+        raise AssertionError("unreachable")
+
     async def _sports_with_events(
         self,
         client: httpx.AsyncClient,
@@ -164,27 +189,29 @@ class TheOddsApiProvider(OddsProvider):
         date_from: datetime,
         date_to: datetime,
     ) -> list[str]:
-        """Which sports have a match in the window, via the free /events endpoint."""
-        limit = asyncio.Semaphore(8)
+        """Which sports have a match in the window, via the free /events endpoint.
 
-        async def has_events(sport: str) -> bool:
-            async with limit:
-                response = await client.get(
-                    f"/sports/{sport}/events",
-                    params={
-                        "apiKey": key,
-                        "dateFormat": "iso",
-                        "commenceTimeFrom": _iso_z(date_from),
-                        "commenceTimeTo": _iso_z(date_to),
-                    },
-                )
+        One sport at a time: a concurrent sweep of every league is the burst
+        that trips the rate limit, even though these calls cost no credits.
+        """
+        found: list[str] = []
+        for sport in self._sports:
+            response = await self._get(
+                client,
+                f"/sports/{sport}/events",
+                {
+                    "apiKey": key,
+                    "dateFormat": "iso",
+                    "commenceTimeFrom": _iso_z(date_from),
+                    "commenceTimeTo": _iso_z(date_to),
+                },
+            )
             if response.status_code == 404:
-                return False
+                continue
             response.raise_for_status()
-            return bool(response.json())
-
-        found = await asyncio.gather(*(has_events(sport) for sport in self._sports))
-        return [sport for sport, ok in zip(self._sports, found, strict=True) if ok]
+            if response.json():
+                found.append(sport)
+        return found
 
     def _require_key(self) -> str:
         key = self._settings.the_odds_api_key
@@ -245,9 +272,10 @@ class TheOddsApiProvider(OddsProvider):
         credits_remaining: int | None = None
         try:
             for sport in self._sports:
-                response = await client.get(
+                response = await self._get(
+                    client,
                     f"/sports/{sport}/events",
-                    params={
+                    {
                         "apiKey": key,
                         "dateFormat": "iso",
                         "commenceTimeFrom": _iso_z(date_from),
@@ -263,9 +291,10 @@ class TheOddsApiProvider(OddsProvider):
             for sport, event in discovered[:event_limit]:
                 if not self.guard.reserve(maximum_per_event):
                     break
-                response = await client.get(
+                response = await self._get(
+                    client,
                     f"/sports/{sport}/events/{event['id']}/odds",
-                    params={
+                    {
                         "apiKey": key,
                         "regions": self._settings.the_odds_api_regions,
                         "markets": ",".join(market_keys),
@@ -331,7 +360,7 @@ class TheOddsApiProvider(OddsProvider):
                             "the_odds_api: daily credit budget reached; serving stored data only"
                         )
                     break  # sports are in priority order; keep what we paid for
-                resp = await client.get(f"/sports/{sport}/odds", params=params)
+                resp = await self._get(client, f"/sports/{sport}/odds", params)
                 self._observe(resp)
                 if resp.status_code == 404:
                     # Sport out of season / no events in window.
@@ -402,6 +431,15 @@ def _normalize_outcome_name(name: str, home: str, away: str) -> str:
     if name == away:
         return "Away"
     return name  # "Draw", "Over", "Under" pass through
+
+
+def _retry_after(response: httpx.Response, attempt: int) -> float:
+    """Seconds to wait after a 429: the server's Retry-After, else 2, 4, 8..."""
+    try:
+        seconds = float(response.headers["retry-after"])
+    except (KeyError, ValueError):
+        seconds = 2.0 ** (attempt + 1)
+    return min(max(seconds, 0.0), 60.0)
 
 
 def _iso_z(dt: datetime) -> str:

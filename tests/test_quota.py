@@ -30,6 +30,7 @@ def _settings(**overrides) -> Settings:
         api_football_key="test-key",
         api_football_base_url=API_FOOTBALL,
         database_url="sqlite://",
+        the_odds_api_min_interval_seconds=0,
         **overrides,
     )
 
