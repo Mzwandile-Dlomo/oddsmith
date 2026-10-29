@@ -5,9 +5,10 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from oddsmith import cache as cache_module
 from oddsmith.config import Settings
-from oddsmith.db import OddsSnapshot
+from oddsmith.db import FetchLog, OddsSnapshot
 from oddsmith.models import Fixture, Market, MarketType, Outcome
-from oddsmith.providers.base import OddsProvider
+from oddsmith.providers.base import OddsProvider, ProviderError
+from oddsmith.providers.merge import AllProvidersFailed
 
 
 class CountingProvider(OddsProvider):
@@ -322,3 +323,24 @@ async def test_refresh_without_odds_keeps_stored_markets(session, settings, monk
     )
 
     assert fixtures[0].markets, "a budget-skipped refresh must not wipe stored odds"
+
+
+async def test_total_provider_failure_does_not_mark_days_fetched(session, settings, monkeypatch):
+    """Otherwise a dead API key freezes past days as "0 fixtures" for good."""
+    _patch_settings(monkeypatch, settings)
+
+    class _Dead(OddsProvider):
+        name = "dead"
+
+        async def list_fixtures(self, *, date_from, date_to, markets=None):
+            raise ProviderError("401 invalid key")
+
+        async def get_markets(self, fixture_id):
+            return []
+
+    with pytest.raises(AllProvidersFailed):
+        await cache_module.get_cached_fixtures(
+            session, [_Dead()], force_refresh=True, **WINDOW
+        )
+
+    assert list(session.exec(select(FetchLog))) == []

@@ -12,7 +12,7 @@ import {
   Target,
   Wallet,
 } from "lucide-react";
-import { fetchCalendar, fetchPaperPerformance, fetchSlips } from "@/lib/api";
+import { fetchCalendar, fetchPaperPerformance, fetchPipelineHealth, fetchSlips } from "@/lib/api";
 import type { CalendarDay, DailyAccaView, SlipView } from "@/lib/types";
 import {
   addDays,
@@ -193,6 +193,32 @@ function UpcomingStrip({ days }: { days: CalendarDay[] }) {
   );
 }
 
+/**
+ * The scheduled jobs fail out of sight. Without this, a dead API key only shows
+ * up weeks later as "the model stopped making tickets".
+ */
+function PipelineWarning({ problems, lastCapture }: { problems: string[]; lastCapture: string | null }) {
+  return (
+    <section
+      role="status"
+      className="flex gap-3 rounded-xl border border-warn/25 bg-warn-soft/60 px-4 py-3"
+    >
+      <AlertCircle size={16} className="mt-0.5 shrink-0 text-warn" />
+      <div className="min-w-0 flex-1 text-sm text-warn-strong">
+        <p className="font-semibold">The paper track is not being fed.</p>
+        <ul className="mt-1 list-disc space-y-0.5 pl-4">
+          {problems.map((problem) => (
+            <li key={problem}>{problem}</li>
+          ))}
+        </ul>
+        <p className="mt-1 text-xs">
+          Last odds capture: {lastCapture ? formatKickoffShort(lastCapture) : "never"}
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export function OverviewView() {
   const today = todayISO();
   const weekEnd = toLocalISODate(addDays(dateFromISO(today), 6));
@@ -200,6 +226,7 @@ export function OverviewView() {
 
   const slipsQuery = useQuery({ queryKey: ["slips"], queryFn: fetchSlips });
   const paperQuery = useQuery({ queryKey: ["paper-performance"], queryFn: fetchPaperPerformance });
+  const healthQuery = useQuery({ queryKey: ["pipeline-health"], queryFn: fetchPipelineHealth });
   const weekQuery = useQuery({
     queryKey: ["calendar", today, weekEnd],
     queryFn: () => fetchCalendar(today, weekEnd),
@@ -236,6 +263,10 @@ export function OverviewView() {
             : "Your betting at a glance."}
         </p>
       </div>
+
+      {healthQuery.data && !healthQuery.data.healthy && (
+        <PipelineWarning problems={healthQuery.data.problems} lastCapture={healthQuery.data.last_odds_capture_at} />
+      )}
 
       <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
         <KpiTile

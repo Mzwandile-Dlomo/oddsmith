@@ -138,6 +138,40 @@ export interface PaperPerformanceView {
   unit_roi: number | null;
   tracking_target: number;
   note: string;
+  calibration: PaperCalibrationView;
+}
+
+export interface CalibrationBucketView {
+  label: string;
+  legs: number;
+  predicted_rate: number | null;
+  actual_rate: number | null;
+}
+
+/** Predicted vs actual for paper legs whose probability was stored at save time. */
+export interface PaperCalibrationView {
+  graded_legs: number;
+  /** Settled legs from tickets saved before probabilities were stored. */
+  ungraded_legs: number;
+  expected_hits: number;
+  expected_hits_low: number;
+  expected_hits_high: number;
+  actual_hits: number;
+  graded_tickets: number;
+  expected_ticket_wins: number;
+  actual_ticket_wins: number;
+  buckets: CalibrationBucketView[];
+  verdict: string;
+}
+
+export interface PipelineHealthView {
+  checked_at: string;
+  last_odds_capture_at: string | null;
+  last_result_at: string | null;
+  upcoming_fixtures: number;
+  overdue_paper_legs: number;
+  healthy: boolean;
+  problems: string[];
 }
 
 export interface ProbabilityMetricsView {

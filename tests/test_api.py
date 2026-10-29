@@ -1,9 +1,9 @@
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from oddsmith import api as api_module
 from oddsmith import db as db_module
@@ -14,6 +14,8 @@ from oddsmith.db import (
     HistoricalMatch,
     MatchObservation,
     ModelEvaluationSnapshot,
+    OddsSnapshot,
+    PaperLegPrediction,
     ScheduledFixture,
 )
 from oddsmith.models import Fixture, Market, MarketType, Outcome
@@ -740,10 +742,11 @@ def test_daily_acca_auto_archives_one_canonical_paper_prediction_per_day(
             )
         ],
     )
-    _store_stub_fixture(datetime(2026, 7, 22, 15, tzinfo=UTC))
+    day = (datetime.now(UTC) + timedelta(days=1)).date()
+    _store_stub_fixture(datetime.combine(day, time(15), tzinfo=UTC))
     params = {
-        "date_from": "2026-07-22T00:00:00Z",
-        "date_to": "2026-07-22T23:59:59Z",
+        "date_from": f"{day.isoformat()}T00:00:00Z",
+        "date_to": f"{day.isoformat()}T23:59:59Z",
         "auto_track": "true",
     }
 
@@ -755,11 +758,162 @@ def test_daily_acca_auto_archives_one_canonical_paper_prediction_per_day(
     archived = [
         slip
         for slip in client.get("/slips").json()
-        if slip["name"] == "Paper daily 1.50 · 2026-07-22"
+        if slip["name"] == f"Paper daily 1.50 · {day.isoformat()}"
     ]
     assert len(archived) == 1
     assert archived[0]["stake"] == 0.0
     assert archived[0]["legs"][0]["price"] == 1.66
+    # The model's confidence is locked in beside the price, once.
+    with Session(db_module.get_engine()) as session:
+        predictions = list(session.exec(select(PaperLegPrediction)))
+    assert [(p.slip_leg_id, p.model_prob, p.edge) for p in predictions] == [
+        (archived[0]["legs"][0]["id"], 0.63, 0.03)
+    ]
+
+
+def _patch_single_candidate(monkeypatch, *, model_prob: float = 0.63) -> None:
+    pick = api_module.ValuePick(
+        selection="Home",
+        offered_odds=1.66,
+        model_prob=model_prob,
+        implied_prob=0.60,
+        edge=0.03,
+        expected_value=0.0458,
+    )
+    monkeypatch.setattr(
+        api_module,
+        "_collect_candidates",
+        lambda fixtures, **_kwargs: [
+            api_module.Candidate(
+                fixture_id=f.id,
+                home_team=f.home_team,
+                away_team=f.away_team,
+                market_type="match_winner",
+                pick=pick,
+            )
+            for f in fixtures
+        ],
+    )
+
+
+@pytest.mark.parametrize("minutes_to_kickoff", [-60, 10])
+def test_daily_acca_never_archives_a_match_that_started_or_is_about_to(
+    client, monkeypatch, minutes_to_kickoff
+):
+    """The board holds whole days, so a late page load still sees started games."""
+    _patch_single_candidate(monkeypatch)
+    _store_stub_fixture(datetime.now(UTC) + timedelta(minutes=minutes_to_kickoff))
+    today = datetime.now(UTC).date().isoformat()
+
+    body = client.get(
+        "/acca/daily",
+        params={
+            "date_from": f"{today}T00:00:00Z",
+            "date_to": f"{today}T23:59:59Z",
+            "auto_track": "true",
+        },
+    ).json()
+
+    assert body["auto_tracked"] is False
+    assert body["legs"] == []
+    assert client.get("/slips").json() == []
+
+
+def test_daily_acca_without_auto_track_still_shows_the_whole_day(client, monkeypatch):
+    """Review views of a day keep every match; only archiving is restricted."""
+    _patch_single_candidate(monkeypatch)
+    _store_stub_fixture(datetime.now(UTC) - timedelta(minutes=60))
+    today = datetime.now(UTC).date().isoformat()
+
+    body = client.get(
+        "/acca/daily",
+        params={"date_from": f"{today}T00:00:00Z", "date_to": f"{today}T23:59:59Z"},
+    ).json()
+
+    assert len(body["legs"]) == 1
+    assert body["auto_tracked"] is False
+
+
+def _paper_ticket(client, *, kickoff: str, name: str, result: str, model_prob=None):
+    payload = _slip_on(kickoff, stake=0, price=1.6)
+    payload["name"] = name
+    slip = client.post("/slips", json=payload).json()
+    leg_id = slip["legs"][0]["id"]
+    if model_prob is not None:
+        with Session(db_module.get_engine()) as session:
+            session.add(PaperLegPrediction(slip_leg_id=leg_id, model_prob=model_prob, edge=0.02))
+            session.commit()
+    if result != "pending":
+        client.patch(
+            f"/slips/{slip['id']}", json={"legs": [{"leg_id": leg_id, "result": result}]}
+        )
+
+
+def test_paper_calibration_grades_only_legs_with_a_stored_probability(client):
+    _paper_ticket(client, kickoff="2026-10-20T15:00:00Z", name="Paper daily 1.50 · 2026-10-20",
+                  result="won", model_prob=0.65)
+    _paper_ticket(client, kickoff="2026-10-21T15:00:00Z", name="Paper daily 1.50 · 2026-10-21",
+                  result="lost", model_prob=0.75)
+    # Saved before probabilities were stored: counted as ungraded, never guessed.
+    _paper_ticket(client, kickoff="2026-10-10T15:00:00Z", name="Paper daily 1.50 · 2026-10-10",
+                  result="lost")
+
+    calibration = client.get("/model/paper-performance").json()["calibration"]
+
+    assert calibration["graded_legs"] == 2
+    assert calibration["ungraded_legs"] == 1
+    assert calibration["expected_hits"] == 1.4
+    assert calibration["actual_hits"] == 1
+    assert calibration["graded_tickets"] == 2
+    assert calibration["expected_ticket_wins"] == 1.4
+    assert calibration["actual_ticket_wins"] == 1
+    by_label = {b["label"]: b for b in calibration["buckets"]}
+    assert by_label["60–70%"] == {
+        "label": "60–70%", "legs": 1, "predicted_rate": 0.65, "actual_rate": 1.0
+    }
+    assert by_label["70–80%"]["actual_rate"] == 0.0
+    assert "mostly luck" in calibration["verdict"]
+
+
+def test_pipeline_health_flags_a_dead_sync_and_overdue_paper_legs(client):
+    _paper_ticket(client, kickoff=(datetime.now(UTC) - timedelta(days=2)).isoformat(),
+                  name="Paper daily 1.50 · overdue", result="pending")
+
+    body = client.get("/health/pipeline").json()
+
+    assert body["healthy"] is False
+    assert body["last_odds_capture_at"] is None
+    assert body["overdue_paper_legs"] == 1
+    assert len(body["problems"]) == 3
+
+
+def test_pipeline_health_is_quiet_when_the_sync_is_current(client):
+    kickoff = datetime.now(UTC) + timedelta(hours=5)
+    _store_stub_fixture(kickoff)
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            OddsSnapshot(
+                snapshot_key="health:1",
+                fixture_id="stub:1",
+                provider="stub",
+                bookmaker="book",
+                kickoff_utc=kickoff.replace(tzinfo=None),
+                captured_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1),
+                hours_to_kickoff=6.0,
+                home_team="Arsenal",
+                away_team="Chelsea",
+                market_type="match_winner",
+                selection="Home",
+                price=2.1,
+            )
+        )
+        session.commit()
+
+    body = client.get("/health/pipeline").json()
+
+    assert body["healthy"] is True
+    assert body["problems"] == []
+    assert body["upcoming_fixtures"] == 1
 
 
 def test_daily_acca_rejects_unmodelled_market(client):

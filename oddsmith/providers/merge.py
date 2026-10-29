@@ -20,6 +20,10 @@ from oddsmith.models import Fixture, MarketType
 from oddsmith.providers.base import OddsProvider, ProviderError
 from oddsmith.textnorm import fold_accents
 
+
+class AllProvidersFailed(ProviderError):
+    """Every provider errored, so the window's emptiness says nothing about it."""
+
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _TEAM_NOISE = ("fc", "afc", "cf", "sc")
 
@@ -51,7 +55,9 @@ async def gather_fixtures(
     """Fetch from every provider concurrently and merge the results.
 
     A single provider failing (e.g. missing key) does not sink the request; its
-    error is skipped so any working provider still returns fixtures.
+    error is skipped so any working provider still returns fixtures. When EVERY
+    provider fails, that is raised instead: an empty list would read as "no
+    matches those days" and get logged as fetched, freezing the gap.
     """
     results = await asyncio.gather(
         *(
@@ -62,12 +68,17 @@ async def gather_fixtures(
     )
 
     all_fixtures: list[Fixture] = []
-    for result in results:
+    failures: list[str] = []
+    for provider, result in zip(providers, results):
         if isinstance(result, ProviderError):
+            failures.append(f"{provider.name}: {result}")
             continue
         if isinstance(result, BaseException):
             raise result
         all_fixtures.extend(result)
+
+    if providers and len(failures) == len(providers):
+        raise AllProvidersFailed("; ".join(failures))
 
     return _merge(all_fixtures)
 

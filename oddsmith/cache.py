@@ -122,6 +122,9 @@ async def get_cached_fixtures(
     if to_fetch:
         fetch_start = datetime.combine(min(to_fetch), datetime.min.time(), tzinfo=UTC)
         fetch_end = datetime.combine(max(to_fetch), datetime.max.time(), tzinfo=UTC)
+        # AllProvidersFailed propagates on purpose: logging these days as
+        # fetched with 0 fixtures would freeze the gap (past days are never
+        # re-fetched), and the scheduled job should fail loudly instead.
         fetched = await gather_fixtures(
             providers, date_from=fetch_start, date_to=fetch_end, markets=markets
         )

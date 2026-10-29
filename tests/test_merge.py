@@ -4,7 +4,12 @@ import pytest
 
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider, ProviderError
-from oddsmith.providers.merge import _merge, _normalize_team, gather_fixtures
+from oddsmith.providers.merge import (
+    AllProvidersFailed,
+    _merge,
+    _normalize_team,
+    gather_fixtures,
+)
 
 
 def _fx(fid, home, away, provider, markets=None, hour=15):
@@ -96,6 +101,16 @@ async def test_gather_reraises_unexpected_error():
     with pytest.raises(RuntimeError):
         await gather_fixtures(
             [_Crash()],
+            date_from=datetime(2026, 7, 25, tzinfo=UTC),
+            date_to=datetime(2026, 7, 26, tzinfo=UTC),
+        )
+
+
+async def test_gather_raises_when_every_provider_fails():
+    """An empty list would read as "no matches", and get logged as fetched."""
+    with pytest.raises(AllProvidersFailed, match="boom: no key"):
+        await gather_fixtures(
+            [_FailingProvider(), _FailingProvider()],
             date_from=datetime(2026, 7, 25, tzinfo=UTC),
             date_to=datetime(2026, 7, 26, tzinfo=UTC),
         )

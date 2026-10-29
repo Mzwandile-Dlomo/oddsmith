@@ -14,6 +14,7 @@ import type {
   MatchReadView,
   ModelReadinessView,
   PaperPerformanceView,
+  PipelineHealthView,
   PersonalPoolEntry,
   PersonalPoolView,
   ResearchDay,
@@ -119,6 +120,10 @@ export async function fetchModelReadiness(): Promise<ModelReadinessView> {
 
 export async function fetchPaperPerformance(): Promise<PaperPerformanceView> {
   return request<PaperPerformanceView>("/model/paper-performance");
+}
+
+export async function fetchPipelineHealth(): Promise<PipelineHealthView> {
+  return request<PipelineHealthView>("/health/pipeline");
 }
 
 export async function fetchLatestEvaluation(): Promise<EvaluationReportView> {

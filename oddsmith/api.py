@@ -16,6 +16,7 @@ Routes:
 
 from __future__ import annotations
 
+import math
 import time as time_module
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -38,6 +39,7 @@ from oddsmith.db import (
     ModelEvaluationSnapshot,
     OddsSnapshot,
     OddsFixtureResult,
+    PaperLegPrediction,
     PersonalPoolEntry,
     ScheduledFixture,
     Slip,
@@ -48,12 +50,14 @@ from oddsmith.db import (
 from oddsmith.models import Fixture, MarketType
 from oddsmith.providers.api_football import ApiFootballProvider
 from oddsmith.providers.base import OddsProvider
+from oddsmith.providers.merge import AllProvidersFailed
 from oddsmith.cache import find_cached_fixture, get_cached_fixtures, read_cached_fixtures
 from oddsmith.data.schedules import read_scheduled_fixtures
 from oddsmith.data.settlement import team_key
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
 from oddsmith.odds_model.acca import Acca, Candidate, build_acca
 from oddsmith.odds_model.backtest import backtest_1x2
+from oddsmith.odds_model.calibration import grade_predictions
 from oddsmith.odds_model.poisson import MatchResult
 from oddsmith.odds_model.service import (
     PoissonModelService,
@@ -280,6 +284,78 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# The 6-hourly sync plus slack: past this, a scheduled run has been missed.
+ODDS_STALE_AFTER = timedelta(hours=8)
+# Kickoff + ~2h of football + the next 6-hourly results run, with slack.
+RESULT_OVERDUE_AFTER = timedelta(hours=12)
+
+
+class PipelineHealthView(BaseModel):
+    checked_at: datetime
+    last_odds_capture_at: datetime | None
+    last_result_at: datetime | None
+    upcoming_fixtures: int
+    overdue_paper_legs: int
+    healthy: bool
+    problems: list[str]
+
+
+@app.get("/health/pipeline", response_model=PipelineHealthView)
+def pipeline_health(session: Session = Depends(get_session)) -> PipelineHealthView:
+    """Is the scheduled pipeline still feeding the paper track? DB reads only.
+
+    The jobs fail silently from the app's point of view, so without this a dead
+    API key shows up only as "the model stopped making tickets" weeks later.
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    last_capture = session.exec(select(func.max(OddsSnapshot.captured_at))).one()
+    last_result = session.exec(select(func.max(OddsFixtureResult.settled_at))).one()
+    upcoming = session.exec(
+        select(func.count())
+        .select_from(CachedFixture)
+        .where(
+            CachedFixture.kickoff_utc >= now,
+            CachedFixture.kickoff_utc < now + timedelta(hours=48),
+        )
+    ).one()
+    overdue = session.exec(
+        select(func.count())
+        .select_from(SlipLeg)
+        .join(Slip, Slip.id == SlipLeg.slip_id)
+        .where(
+            Slip.name.like("Paper %"),
+            SlipLeg.result == LegResult.PENDING,
+            SlipLeg.kickoff_utc < now - RESULT_OVERDUE_AFTER,
+        )
+    ).one()
+
+    problems: list[str] = []
+    if last_capture is None or now - last_capture > ODDS_STALE_AFTER:
+        problems.append(
+            "No odds captured in over 8 hours: the 6-hourly sync is not running or its "
+            "API keys are failing. Check the GitHub Actions runs."
+        )
+    if upcoming == 0:
+        problems.append(
+            "No fixtures on the board for the next 48 hours, so no paper ticket can be "
+            "made (expected only during an international break)."
+        )
+    if overdue:
+        problems.append(
+            f"{overdue} paper leg{'s' if overdue != 1 else ''} still unsettled 12+ hours "
+            "after kickoff: results ingestion is behind, or the match was postponed."
+        )
+    return PipelineHealthView(
+        checked_at=now,
+        last_odds_capture_at=last_capture,
+        last_result_at=last_result,
+        upcoming_fixtures=upcoming,
+        overdue_paper_legs=overdue,
+        healthy=not problems,
+        problems=problems,
+    )
+
+
 @app.get("/fixtures", response_model=list[Fixture])
 async def list_fixtures(
     date_from: datetime | None = Query(default=None),
@@ -299,14 +375,19 @@ async def list_fixtures(
     if end < start:
         raise HTTPException(status_code=400, detail="date_to must be after date_from")
     if refresh:
-        fixtures = await get_cached_fixtures(
-            session,
-            providers,
-            date_from=start,
-            date_to=end,
-            markets=markets,
-            force_refresh=True,
-        )
+        try:
+            fixtures = await get_cached_fixtures(
+                session,
+                providers,
+                date_from=start,
+                date_to=end,
+                markets=markets,
+                force_refresh=True,
+            )
+        except AllProvidersFailed as exc:
+            raise HTTPException(
+                status_code=502, detail=f"Every odds provider failed: {exc}"
+            ) from exc
     else:
         fixtures = read_cached_fixtures(session, date_from=start, date_to=end)
     scheduled = read_scheduled_fixtures(session, date_from=start, date_to=end)
@@ -551,6 +632,30 @@ class ModelReadinessView(BaseModel):
     next_priorities: list[str]
 
 
+class CalibrationBucketView(BaseModel):
+    label: str
+    legs: int
+    predicted_rate: float | None
+    actual_rate: float | None
+
+
+class PaperCalibrationView(BaseModel):
+    """Predicted vs actual for paper legs whose probability was stored at save time."""
+
+    graded_legs: int
+    # Settled legs from tickets saved before probabilities were stored.
+    ungraded_legs: int
+    expected_hits: float
+    expected_hits_low: float
+    expected_hits_high: float
+    actual_hits: int
+    graded_tickets: int
+    expected_ticket_wins: float
+    actual_ticket_wins: int
+    buckets: list[CalibrationBucketView]
+    verdict: str
+
+
 class PaperPerformanceView(BaseModel):
     generated_tickets: int
     pending_tickets: int
@@ -565,6 +670,7 @@ class PaperPerformanceView(BaseModel):
     unit_roi: float | None
     tracking_target: int
     note: str
+    calibration: PaperCalibrationView
 
 
 class ProbabilityMetricsView(BaseModel):
@@ -835,6 +941,20 @@ def daily_acca(
     # Reads the board the sync jobs stored; the home page loads this on every
     # visit, so it must never spend provider quota.
     fixtures = read_cached_fixtures(session, date_from=start, date_to=end)
+    archive_paper = auto_track and _is_canonical_daily_request(
+        target_odds=target_odds,
+        max_legs=max_legs,
+        min_leg_prob=min_leg_prob,
+        require_value=require_value,
+        max_edge=max_edge,
+        markets=requested_markets,
+    )
+    if archive_paper:
+        # The board is read by whole days, so it still holds matches that have
+        # already kicked off. A paper ticket is only evidence if every leg was
+        # chosen before its match started.
+        cutoff = datetime.now(UTC) + PAPER_MIN_LEAD
+        fixtures = [f for f in fixtures if _aware_utc(f.kickoff_utc) >= cutoff]
     service = get_model_service(session)
     _enrich_with_model(fixtures, service)
     candidates = _collect_candidates(
@@ -909,18 +1029,15 @@ def daily_acca(
     # The Today page requests this only for the untouched 1.50 daily strategy.
     # Its first valid prediction becomes an immutable paper observation; later
     # page loads retain that original price rather than replacing it with hindsight.
-    if auto_track and _is_canonical_daily_request(
-        target_odds=target_odds,
-        max_legs=max_legs,
-        min_leg_prob=min_leg_prob,
-        require_value=require_value,
-        max_edge=max_edge,
-        markets=requested_markets,
-    ):
+    if archive_paper:
         daily_view.auto_tracked = _archive_daily_paper_prediction(
             session, daily_view, prediction_day=start.date()
         )
     return daily_view
+
+
+# How far ahead of kickoff every leg of an archived paper ticket must be.
+PAPER_MIN_LEAD = timedelta(minutes=30)
 
 
 def _is_canonical_daily_request(
@@ -948,6 +1065,9 @@ def _archive_daily_paper_prediction(
     """Persist the first valid canonical daily prediction, once per UTC day."""
     if not view.legs or any(leg.kickoff_utc is None for leg in view.legs):
         return False
+    cutoff = datetime.now(UTC) + PAPER_MIN_LEAD
+    if any(_aware_utc(leg.kickoff_utc) < cutoff for leg in view.legs):
+        return False
     name = f"Paper daily 1.50 · {prediction_day.isoformat()}"
     existing = session.exec(
         select(Slip).where(Slip.user_id == DEFAULT_USER_ID, Slip.name == name)
@@ -966,22 +1086,32 @@ def _archive_daily_paper_prediction(
     session.add(slip)
     session.commit()
     session.refresh(slip)
+    slip_legs = [
+        SlipLeg(
+            slip_id=slip.id,
+            fixture_id=leg.fixture_id,
+            home_team=leg.home_team,
+            away_team=leg.away_team,
+            kickoff_utc=leg.kickoff_utc,
+            league=leg.league,
+            provider=leg.provider,
+            market_type=leg.market_type,
+            selection=leg.selection,
+            point=leg.point,
+            price=leg.offered_odds,
+        )
+        for leg in view.legs
+    ]
+    session.add_all(slip_legs)
+    session.flush()
+    # Lock in the model's confidence alongside the price, so the ticket can
+    # later be graded on whether "67% to land" really lands about 67% of the time.
     session.add_all(
         [
-            SlipLeg(
-                slip_id=slip.id,
-                fixture_id=leg.fixture_id,
-                home_team=leg.home_team,
-                away_team=leg.away_team,
-                kickoff_utc=leg.kickoff_utc,
-                league=leg.league,
-                provider=leg.provider,
-                market_type=leg.market_type,
-                selection=leg.selection,
-                point=leg.point,
-                price=leg.offered_odds,
+            PaperLegPrediction(
+                slip_leg_id=slip_leg.id, model_prob=leg.model_prob, edge=leg.edge
             )
-            for leg in view.legs
+            for slip_leg, leg in zip(slip_legs, view.legs)
         ]
     )
     session.commit()
@@ -1349,6 +1479,7 @@ def paper_performance(session: Session = Depends(get_session)) -> PaperPerforman
     staked = float(len(settled))
     profit = returned - staked
     target = 100
+    calibration = _paper_calibration(session, paper_slips)
     return PaperPerformanceView(
         generated_tickets=len(paper_slips),
         pending_tickets=len(paper_slips) - len(settled),
@@ -1373,6 +1504,69 @@ def paper_performance(session: Session = Depends(get_session)) -> PaperPerforman
             else f"Tracking only: {len(settled)} of {target} standardized one-unit paper "
             "tickets are settled. This sample does not unlock real-money staking."
         ),
+        calibration=calibration,
+    )
+
+
+def _paper_calibration(session: Session, paper_slips: list[Slip]) -> PaperCalibrationView:
+    """Grade every won/lost paper leg against the probability stored when it was saved."""
+    legs_by_slip = _load_legs_by_slip(session, paper_slips)
+    all_legs = [leg for legs in legs_by_slip.values() for leg in legs]
+    leg_ids = [leg.id for leg in all_legs if leg.id is not None]
+    probs = (
+        {
+            row.slip_leg_id: row.model_prob
+            for row in session.exec(
+                select(PaperLegPrediction).where(PaperLegPrediction.slip_leg_id.in_(leg_ids))
+            )
+        }
+        if leg_ids
+        else {}
+    )
+    decided = {LegResult.WON, LegResult.LOST}
+    graded = [
+        (probs[leg.id], leg.result is LegResult.WON)
+        for leg in all_legs
+        if leg.result in decided and leg.id in probs
+    ]
+    ungraded = sum(1 for leg in all_legs if leg.result in decided and leg.id not in probs)
+
+    # Ticket level: a settled ticket counts only if every leg that played was
+    # predicted. Void legs drop out of an acca, so they drop out of its odds too.
+    graded_tickets = 0
+    expected_ticket_wins = 0.0
+    actual_ticket_wins = 0
+    for slip in paper_slips:
+        if slip.result is SlipResult.PENDING:
+            continue
+        played = [leg for leg in legs_by_slip.get(slip.id or 0, []) if leg.result in decided]
+        if not played or any(leg.id not in probs for leg in played):
+            continue
+        graded_tickets += 1
+        expected_ticket_wins += math.prod(probs[leg.id] for leg in played)
+        actual_ticket_wins += slip.result is SlipResult.WON
+
+    report = grade_predictions(graded)
+    return PaperCalibrationView(
+        graded_legs=report.legs,
+        ungraded_legs=ungraded,
+        expected_hits=report.expected_hits,
+        expected_hits_low=report.expected_hits_low,
+        expected_hits_high=report.expected_hits_high,
+        actual_hits=report.actual_hits,
+        graded_tickets=graded_tickets,
+        expected_ticket_wins=round(expected_ticket_wins, 2),
+        actual_ticket_wins=actual_ticket_wins,
+        buckets=[
+            CalibrationBucketView(
+                label=b.label,
+                legs=b.legs,
+                predicted_rate=b.predicted_rate,
+                actual_rate=b.actual_rate,
+            )
+            for b in report.buckets
+        ],
+        verdict=report.verdict,
     )
 
 

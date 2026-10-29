@@ -53,6 +53,22 @@ class SlipLeg(SQLModel, table=True):
     result: LegResult = Field(default=LegResult.PENDING)
 
 
+class PaperLegPrediction(SQLModel, table=True):
+    """What the model believed about a paper-ticket leg when it was archived.
+
+    A separate table rather than new ``SlipLeg`` columns: there are no
+    migrations, and ``create_all`` creates a missing table but never alters an
+    existing one. Legs archived before this table existed have no row and are
+    never backfilled — a probability computed after the fact is hindsight.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    slip_leg_id: int = Field(foreign_key="slipleg.id", index=True, unique=True)
+    model_prob: float
+    edge: float
+    created_at: datetime = Field(default_factory=_now)
+
+
 class PersonalPoolEntry(SQLModel, table=True):
     """A personally curated selection, tracked independently from model picks.
 

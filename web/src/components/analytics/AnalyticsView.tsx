@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { fetchPaperPerformance, fetchSlips } from "@/lib/api";
-import type { MarketType, SlipView } from "@/lib/types";
+import type { MarketType, PaperCalibrationView, SlipView } from "@/lib/types";
 import { formatOdds, formatPercent, formatSignedCurrency, marketLabel } from "@/lib/utils";
 import { PnlChart } from "@/components/charts/PnlChart";
 import { Stat, StatGrid, signTone } from "@/components/ui/Stat";
@@ -60,6 +60,87 @@ function MarketHitRates({ rows }: { rows: MarketRow[] }) {
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Profit over a few dozen 1.50 tickets is mostly luck. Calibration asks the
+ * sharper question first: when the model says 65%, does it land about 65%?
+ */
+function ModelCalibration({ calibration }: { calibration: PaperCalibrationView }) {
+  const c = calibration;
+  const rows = c.buckets.filter((b) => b.legs > 0);
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+      <h2 className="text-base font-semibold text-ink">Does it know what it says it knows?</h2>
+      <p className="mt-1 text-xs text-muted">
+        Each paper leg stores the model&apos;s probability when the ticket is saved. Here it is graded
+        against what happened.
+      </p>
+
+      <dl className="mt-4 grid grid-cols-1 gap-3 text-sm min-[420px]:grid-cols-2">
+        <div>
+          <dt className="text-xs text-faint">Legs landed</dt>
+          <dd className="tabular-nums text-ink">
+            {c.actual_hits} of {c.graded_legs}
+            <span className="ml-1.5 text-xs text-faint">
+              model expected {c.expected_hits.toFixed(1)}
+              {c.graded_legs > 0 &&
+                ` (honest range ${c.expected_hits_low.toFixed(1)}–${c.expected_hits_high.toFixed(1)})`}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-faint">Tickets won</dt>
+          <dd className="tabular-nums text-ink">
+            {c.actual_ticket_wins} of {c.graded_tickets}
+            <span className="ml-1.5 text-xs text-faint">
+              model expected {c.expected_ticket_wins.toFixed(1)}
+            </span>
+          </dd>
+        </div>
+      </dl>
+
+      {rows.length > 0 && (
+        <ul className="mt-5 flex flex-col gap-4">
+          {rows.map((b) => {
+            const said = b.predicted_rate ?? 0;
+            const landed = b.actual_rate ?? 0;
+            return (
+              <li key={b.label} className="flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="font-medium text-ink">Rated {b.label}</span>
+                  <span className="shrink-0 tabular-nums text-ink">
+                    landed {formatPercent(landed)}
+                    <span className="ml-1.5 text-xs text-faint">
+                      said {formatPercent(said)} · {b.legs} {b.legs === 1 ? "leg" : "legs"}
+                    </span>
+                  </span>
+                </div>
+                <div
+                  className="relative h-2 rounded-full bg-hairline"
+                  role="img"
+                  aria-label={`Rated ${b.label}: model said ${formatPercent(said)}, ${formatPercent(landed)} landed over ${b.legs} legs`}
+                >
+                  <div className="h-full rounded-full bg-accent-mid" style={{ width: `${landed * 100}%` }} />
+                  {/* The tick is what the model claimed; the bar is what happened. */}
+                  <div
+                    className="absolute -top-1 h-4 w-0.5 rounded-full bg-ink"
+                    style={{ left: `calc(${said * 100}% - 1px)` }}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <p className="mt-4 text-xs leading-relaxed text-muted">
+        {c.verdict}
+        {c.ungraded_legs > 0 &&
+          ` ${c.ungraded_legs} older ${c.ungraded_legs === 1 ? "leg was" : "legs were"} saved before probabilities were stored and ${c.ungraded_legs === 1 ? "is" : "are"} left out.`}
+      </p>
+    </section>
   );
 }
 
@@ -180,6 +261,8 @@ export function AnalyticsView() {
           )}
         </section>
       </div>
+
+      {paper && <ModelCalibration calibration={paper.calibration} />}
     </div>
   );
 }
