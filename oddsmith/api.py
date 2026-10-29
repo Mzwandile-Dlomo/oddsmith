@@ -21,7 +21,7 @@ import time as time_module
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from datetime import UTC, date as date_type, datetime, time, timedelta
+from datetime import UTC, date as date_type, datetime, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
