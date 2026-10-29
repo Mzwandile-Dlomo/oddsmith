@@ -21,6 +21,7 @@ import type {
   SlipCreate,
   SlipUpdate,
   SlipView,
+  StrongSlipView,
   TeamStatsView,
 } from "./types";
 
@@ -108,6 +109,27 @@ export async function updateSlip(
 
 export async function fetchWeekendAcca(legs: number): Promise<AccaView> {
   return request<AccaView>(`/acca/weekend?legs=${legs}`);
+}
+
+/** `from`/`to` are local `YYYY-MM-DD` days, inclusive. */
+export async function fetchStrongAcca({
+  from,
+  to,
+  targetOdds,
+  maxLegs,
+}: {
+  from: string;
+  to: string;
+  targetOdds: number;
+  maxLegs: number;
+}): Promise<StrongSlipView> {
+  const params = new URLSearchParams({
+    date_from: from,
+    date_to: to,
+    target_odds: String(targetOdds),
+    max_legs: String(maxLegs),
+  });
+  return request<StrongSlipView>(`/acca/strong?${params.toString()}`);
 }
 
 export async function fetchBacktest(): Promise<BacktestView> {

@@ -70,6 +70,42 @@ export interface AccaView {
   combined_expected_value: number;
 }
 
+/** One Strong form angle as a slip leg; `offered_odds` is null when unpriced. */
+export interface StrongLegView {
+  fixture_id: string;
+  home_team: string;
+  away_team: string;
+  kickoff_utc: string;
+  league: string | null;
+  provider: string;
+  market_type: MarketType;
+  selection: string;
+  point: number | null;
+  label: string;
+  offered_odds: number | null;
+  hits: number;
+  sample: number;
+  h2h_hits: number;
+  h2h_sample: number;
+  support: number;
+  book_implied_prob: number | null;
+  model_prob: number | null;
+}
+
+export interface StrongSlipView {
+  legs: StrongLegView[];
+  alternatives: StrongLegView[];
+  unpriced: StrongLegView[];
+  combined_odds: number;
+  target_odds: number;
+  target_met: boolean;
+  combined_book_prob: number | null;
+  combined_model_prob: number | null;
+  fixtures_scanned: number;
+  priced_fixtures: number;
+  note: string;
+}
+
 export interface BacktestView {
   matches_scored: number;
   hit_rate: number;

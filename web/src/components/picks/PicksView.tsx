@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Pin, Sparkles, Target } from "lucide-react";
+import { Flame, Pin, Sparkles, Target } from "lucide-react";
 import { todayISO } from "@/lib/utils";
 import { DailyAcca } from "@/components/generator/DailyAcca";
 import { OddsGenerator } from "@/components/generator/OddsGenerator";
+import { StrongSlip } from "@/components/generator/StrongSlip";
 import { PersonalPool } from "@/components/pool/PersonalPool";
 import type { PickTab } from "./tabs";
 
 const TABS: { value: PickTab; label: string; icon: React.ElementType; hint: string }[] = [
   { value: "daily", label: "Daily slip", icon: Target, hint: "The likeliest slip that clears your target price" },
+  { value: "strong", label: "Strong slip", icon: Flame, hint: "Stacked from the most consistent form lines over the next few days" },
   { value: "value", label: "Value acca", icon: Sparkles, hint: "Positive-EV legs across the weekend" },
   { value: "pool", label: "Pool", icon: Pin, hint: "Your own favoured selections, tracked separately" },
 ];
@@ -45,6 +47,7 @@ export function PicksView({ tab }: { tab: PickTab }) {
       <p className="-mt-2 text-sm text-muted">{active.hint}.</p>
 
       {active.value === "daily" && <DailyAcca date={todayISO()} autoLoad autoTrack />}
+      {active.value === "strong" && <StrongSlip />}
       {active.value === "value" && <OddsGenerator />}
       {active.value === "pool" && <PersonalPool />}
     </div>
