@@ -1238,3 +1238,83 @@ def test_research_day_keeps_only_the_requested_instants(client):
 
     assert [c["fixture_id"] for c in body["cards"]] == ["fd:sat"]
     assert body["cards"][0]["time_confirmed"] is True
+
+
+def test_strong_acca_builds_from_priced_strong_angles_still_to_kick_off(client):
+    from oddsmith.localdays import local_date
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    later = now + timedelta(hours=6)
+    under = Market(
+        type=MarketType.OVER_UNDER,
+        outcomes=[
+            Outcome(name="Over", price=3.4, point=3.5),
+            Outcome(name="Under", price=1.3, point=3.5),
+        ],
+    )
+
+    def priced(fixture_id, home, away, kickoff):
+        fixture = Fixture(
+            id=fixture_id, home_team=home, away_team=away, kickoff_utc=kickoff,
+            league="Serie A - Italy", provider="the_odds_api", markets=[under],
+        )
+        return CachedFixture(
+            fixture_id=fixture_id,
+            kickoff_utc=kickoff.replace(tzinfo=None),
+            payload=fixture.model_dump(mode="json"),
+        )
+
+    with Session(db_module.get_engine()) as session:
+        session.add_all([
+            priced("odds:later", "Parma", "Udinese", later),
+            # Starts too soon to be placed: never a leg, even though it is Strong.
+            priced("odds:soon", "Genoa", "Lecce", now + timedelta(minutes=10)),
+            ScheduledFixture(
+                source_key="fd:unpriced", source="fixture_download", competition_key="test",
+                league_id=135, league_name="Serie A", country="Italy", season=2026,
+                match_number=7, kickoff_utc=(later + timedelta(hours=1)).replace(tzinfo=None),
+                home_team="Genoa", away_team="Lecce",
+            ),
+        ])
+        # Every club's last five finish 1-0: Under 3.5 lands 10/10.
+        for i, (home, away) in enumerate(
+            [(club, f"Opp{n}") for club in ("Parma", "Udinese", "Genoa", "Lecce") for n in range(5)]
+        ):
+            session.add(
+                MatchObservation(
+                    source_key=f"test:strong:{i}", source="football_data", league="SerieA",
+                    season=2026, kickoff_utc=(now - timedelta(days=3 + i)).replace(tzinfo=None),
+                    home_team=home, away_team=away, home_goals=1, away_goals=0,
+                    raw_payload={},
+                )
+            )
+        session.commit()
+
+    today = local_date(now)
+    body = client.get(
+        "/acca/strong",
+        params={
+            "date_from": today.isoformat(),
+            "date_to": (today + timedelta(days=1)).isoformat(),
+            "target_odds": 1.2,
+        },
+    ).json()
+
+    assert [leg["fixture_id"] for leg in body["legs"]] == ["odds:later"]
+    assert body["legs"][0]["label"] == "Under 3.5 goals"
+    assert body["legs"][0]["offered_odds"] == 1.3
+    assert body["target_met"] is True
+    assert body["priced_fixtures"] == 1
+    # The schedule-only match can only ever be an unpriced pick; the one about to
+    # start is gone entirely. (odds:later's unpriced Under 2.5 is listed too.)
+    unpriced = {leg["fixture_id"] for leg in body["unpriced"]}
+    assert "fd:unpriced" in unpriced and "odds:soon" not in unpriced
+
+
+def test_strong_acca_rejects_wide_or_backwards_windows(client):
+    assert client.get(
+        "/acca/strong", params={"date_from": "2026-11-02", "date_to": "2026-11-01"}
+    ).status_code == 400
+    assert client.get(
+        "/acca/strong", params={"date_from": "2026-11-01", "date_to": "2026-11-09"}
+    ).status_code == 422

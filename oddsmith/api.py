@@ -7,7 +7,8 @@ Routes:
   GET   /fixtures/{fixture_id}/insights - recent form, head-to-head, line hit rates
   GET   /acca/weekend               - auto-built value acca (long price, low strike rate)
   GET   /acca/daily                 - short-priced "banker" slip + Kelly stake sizing
-  GET   /calendar                   - per-day fixture/slip/model summary (cache-only)
+  GET   /acca/strong                - slip stacked from the research board's Strong angles
+  GET   /calendar                  - per-day fixture/slip/model summary (cache-only)
   POST  /slips                      - create a slip with legs (locks odds)
   GET   /slips                      - list slips for the default user
   GET   /slips/{slip_id}            - one slip with legs + computed odds/returns
@@ -76,6 +77,12 @@ from oddsmith.history import team_stats
 from oddsmith.insights import MatchInsights, build_insights, club_key, load_insight_rows
 from oddsmith.match_read import MatchReadView, get_match_read
 from oddsmith.research import ResearchDay, research_card
+from oddsmith.strong_slip import (
+    DEFAULT_MIN_LEG_ODDS,
+    StrongSlip,
+    build_strong_slip,
+    strong_candidates,
+)
 from oddsmith.matches import router as matches_router
 from oddsmith.slips import (
     LegInput,
@@ -159,7 +166,14 @@ def _same_fixture(left: Fixture, right: Fixture) -> bool:
 
     def compatible(first: str, second: str) -> bool:
         first_key, second_key = team_key(first), team_key(second)
-        return first_key == second_key or first_key in second_key or second_key in first_key
+        return (
+            first_key == second_key
+            or first_key in second_key
+            or second_key in first_key
+            # club_key knows aliases the substring test cannot: "Inter Milan"
+            # and "Internazionale" are the same club.
+            or club_key(first) == club_key(second)
+        )
 
     return compatible(left.home_team, right.home_team) and compatible(
         left.away_team, right.away_team
@@ -462,6 +476,30 @@ def _aware_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
+def _insights_for(session: Session, fixtures: list[Fixture]) -> list[MatchInsights]:
+    """Insights for each fixture, in order, from one history load for every club playing."""
+    rows = load_insight_rows(
+        session, {name for f in fixtures for name in (f.home_team, f.away_team)}
+    )
+    # Each fixture only needs its two clubs' rows. Club resolution is exact-key,
+    # so this subset yields the same insights as all rows at ~1/N of the work.
+    by_club: dict[str, list[MatchObservation]] = defaultdict(list)
+    for row in rows:
+        by_club[club_key(row.home_team)].append(row)
+        by_club[club_key(row.away_team)].append(row)
+    return [
+        build_insights(
+            fixture_id=f.id,
+            home_team=f.home_team,
+            away_team=f.away_team,
+            kickoff_utc=f.kickoff_utc,
+            rows=by_club[club_key(f.home_team)] + by_club[club_key(f.away_team)],
+            markets=f.markets,
+        )
+        for f in fixtures
+    ]
+
+
 @app.get("/research/day", response_model=ResearchDay)
 def research_day(
     date_from: datetime = Query(...),
@@ -487,16 +525,10 @@ def research_day(
     # Both reads return whole UTC days; keep only the requested instants, so a
     # local day (e.g. SAST) does not pick up the previous UTC evening's matches.
     window_from, window_to = _aware_utc(date_from), _aware_utc(date_to)
-    fixtures = [f for f in fixtures if window_from <= _aware_utc(f.kickoff_utc) <= window_to]
-    rows = load_insight_rows(
-        session, {name for f in fixtures for name in (f.home_team, f.away_team)}
+    fixtures = sorted(
+        (f for f in fixtures if window_from <= _aware_utc(f.kickoff_utc) <= window_to),
+        key=lambda f: f.kickoff_utc,
     )
-    # Each fixture only needs its two clubs' rows. Club resolution is exact-key,
-    # so this subset yields the same insights as all rows at ~1/N of the work.
-    by_club: dict[str, list[MatchObservation]] = defaultdict(list)
-    for row in rows:
-        by_club[club_key(row.home_team)].append(row)
-        by_club[club_key(row.away_team)].append(row)
     cards = [
         research_card(
             fixture_id=f.id,
@@ -504,16 +536,9 @@ def research_day(
             kickoff_utc=f.kickoff_utc,
             priced=bool(f.markets),
             provider=f.provider,
-            insights=build_insights(
-                fixture_id=f.id,
-                home_team=f.home_team,
-                away_team=f.away_team,
-                kickoff_utc=f.kickoff_utc,
-                rows=by_club[club_key(f.home_team)] + by_club[club_key(f.away_team)],
-                markets=f.markets,
-            ),
+            insights=insights,
         )
-        for f in sorted(fixtures, key=lambda f: f.kickoff_utc)
+        for f, insights in zip(fixtures, _insights_for(session, fixtures), strict=True)
     ]
     day = ResearchDay(
         date_from=date_from,
@@ -1173,6 +1198,61 @@ def _daily_note(acca: TargetAcca, *, model_trained: bool = True, fixtures: int =
         f"{len(acca.legs)} legs at {acca.combined_odds:.2f}, which the model rates at "
         f"{acca.combined_model_prob:.0%} to land. Stake the recommended fraction, not "
         "the whole bankroll."
+    )
+
+
+# Wide enough for a long weekend; the sync only prices about three days ahead.
+MAX_STRONG_SLIP_DAYS = 7
+
+
+@app.get("/acca/strong", response_model=StrongSlip)
+def strong_acca(
+    date_from: date_type = Query(...),
+    date_to: date_type = Query(...),
+    target_odds: float = Query(default=2.0, gt=1.0, le=20.0),
+    max_legs: int = Query(default=5, ge=1, le=8),
+    min_leg_odds: float = Query(default=DEFAULT_MIN_LEG_ODDS, gt=1.0, le=5.0),
+    session: Session = Depends(get_session),
+) -> StrongSlip:
+    """Stack the window's best priced Strong angles until the slip clears ``target_odds``.
+
+    ``date_from``/``date_to`` are the user's local days. Reads the odds cache
+    and the schedule only, and skips matches starting within ``PAPER_MIN_LEAD``:
+    there is no point suggesting a leg that can no longer be placed. Schedule
+    fixtures have no prices, so they can only appear among the unpriced picks.
+    """
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be after date_from")
+    span = (date_to - date_from).days + 1
+    if span > MAX_STRONG_SLIP_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"window too wide: {span} days (max {MAX_STRONG_SLIP_DAYS})",
+        )
+
+    window_start, _ = local_day_bounds(date_from)
+    _, window_end = local_day_bounds(date_to)
+    earliest = max(window_start, datetime.now(UTC) + PAPER_MIN_LEAD)
+    fixtures = [
+        f
+        for f in _merge_with_schedule(
+            read_cached_fixtures(session, date_from=window_start, date_to=window_end),
+            read_scheduled_fixtures(session, date_from=window_start, date_to=window_end),
+        )
+        if earliest <= _aware_utc(f.kickoff_utc) <= window_end
+    ]
+    _enrich_with_model(fixtures, get_model_service(session))
+    per_fixture = [
+        strong_candidates(f, insights)
+        for f, insights in zip(fixtures, _insights_for(session, fixtures), strict=True)
+    ]
+    return build_strong_slip(
+        per_fixture,
+        target_odds=target_odds,
+        max_legs=max_legs,
+        min_leg_odds=min_leg_odds,
+        fixtures_scanned=len(fixtures),
+        priced_fixtures=sum(1 for f in fixtures if f.markets),
     )
 
 
