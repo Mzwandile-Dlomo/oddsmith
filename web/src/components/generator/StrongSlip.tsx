@@ -33,9 +33,10 @@ function windowRange(key: WindowKey): { from: string; to: string } {
 }
 
 const WINDOWS: { value: WindowKey; label: string }[] = [
-  { value: "next2", label: "Today + tomorrow" },
+  // Short labels so all three fit the rail; the exact dates show underneath.
+  { value: "next2", label: "2 days" },
   { value: "weekend", label: "Weekend" },
-  { value: "next3", label: "Next 3 days" },
+  { value: "next3", label: "3 days" },
 ];
 const TARGETS = [1.5, 2, 3, 5] as const;
 const LEG_OPTIONS = [3, 4, 5, 6] as const;
@@ -193,7 +194,7 @@ function Results({ data, from, to }: { data: StrongSlipView; from: string; to: s
         )}
 
         {legs.length > 0 && (
-          <div className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-3 sm:gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <StatTile label="Combined odds" value={formatOdds(odds)} />
             <StatTile label="Bookmaker" value={bookProb !== null ? formatPercent(bookProb) : "—"} />
             <StatTile
