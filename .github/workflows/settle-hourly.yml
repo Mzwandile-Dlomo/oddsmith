@@ -17,9 +17,6 @@ jobs:
   settle:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The keys live as *environment* secrets on "dev", so the job has to claim
-    # that environment — a repository-level lookup would resolve to empty.
-    environment: dev
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:

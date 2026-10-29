@@ -24,8 +24,6 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Secrets are scoped to the "dev" environment, not the repository.
-    environment: dev
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
