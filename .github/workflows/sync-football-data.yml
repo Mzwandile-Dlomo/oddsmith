@@ -3,12 +3,16 @@
 # ones we priced, so fixture insights' "last 5" goes stale without it.
 # Football-Data is quota-free and imports are idempotent; it lives in its own
 # workflow so a Football-Data outage cannot block the odds capture.
+# It also refreshes the season schedules: Fixture Download publishes a round
+# with placeholder midnight dates until the league fixes its kickoffs, so a
+# schedule synced once keeps those wrong dates and times forever.
 name: Sync Football-Data results (daily)
 
 on:
   schedule:
     # Before the 06:40 UTC odds/result sync and the 07:05 daily paper ticket.
     # Football-Data usually posts weekend results by Monday night.
+    # GitHub cron is UTC: 06:15 UTC is 08:15 SAST.
     - cron: "15 6 * * *"
   workflow_dispatch:
 
@@ -33,12 +37,18 @@ jobs:
 
       - run: uv sync --frozen
 
-      - name: Import current-season results (major leagues, second tiers, MLS, Brazil, Argentina)
+      - name: Work out the current season
         run: |
           # Seasons are named by their starting year and kick off in August, so
           # until then we are still in the season that started last year.
           year=$(date -u +%Y)
           month=$(date -u +%-m)
-          season=$(( month >= 8 ? year : year - 1 ))
+          echo "SEASON=$(( month >= 8 ? year : year - 1 ))" >> "$GITHUB_ENV"
+
+      - name: Import current-season results (major leagues, second tiers, MLS, Brazil, Argentina)
+        run: |
           uv run python scripts/sync_football_data.py \
-            --from-season "$season" --to-season "$season" --write
+            --from-season "$SEASON" --to-season "$SEASON" --write
+
+      - name: Refresh season schedules (confirmed kickoff dates and times)
+        run: uv run python scripts/sync_fixtures.py --season "$SEASON" --write

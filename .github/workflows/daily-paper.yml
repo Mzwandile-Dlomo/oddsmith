@@ -3,9 +3,16 @@
 name: Generate daily paper ticket
 
 on:
+  # The ticket should use the morning cycle's prices, so it runs when the
+  # 06:40 UTC (08:40 SAST) sync actually finishes. GitHub often starts
+  # scheduled runs hours late or skips them, so a fixed time after the sync's
+  # slot is no guarantee the sync has run.
+  workflow_run:
+    workflows: ["Sync odds and results (6-hourly)"]
+    types: [completed]
   schedule:
-    # Runs after the 06:40 UTC odds/result sync, so the ticket uses that day's
-    # latest cached board rather than the previous cycle's prices.
+    # Backstop if the morning sync never starts: 07:05 UTC is 09:05 SAST.
+    # Archiving is once per UTC day, so a second run is a no-op.
     - cron: "5 7 * * *"
   workflow_dispatch:
 
@@ -15,6 +22,8 @@ concurrency:
 
 jobs:
   generate:
+    # A failed sync means a stale or empty board; the cron backstop retries.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: dev
@@ -32,4 +41,13 @@ jobs:
       - run: uv sync --frozen
 
       - name: Generate and archive today's qualified paper ticket
-        run: uv run python scripts/generate_daily_paper.py
+        run: |
+          # Only the morning cycle (its 06:40 UTC slot, even if it starts hours
+          # late) feeds the ticket. The midnight and later cycles would change
+          # which prices the strategy is judged on.
+          hour=$(date -u +%-H)
+          if [ "${{ github.event_name }}" = "workflow_run" ] && { [ "$hour" -lt 6 ] || [ "$hour" -ge 12 ]; }; then
+            echo "Sync finished at ${hour}:xx UTC, outside the morning cycle; no ticket from this run."
+            exit 0
+          fi
+          uv run python scripts/generate_daily_paper.py
