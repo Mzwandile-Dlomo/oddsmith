@@ -86,9 +86,12 @@ function LegRow({
         <Evidence leg={leg} />
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <span className="text-[15px] font-bold tabular-nums text-ink">
-          {leg.offered_odds !== null ? formatOdds(leg.offered_odds) : "—"}
-        </span>
+        {leg.offered_odds !== null ? (
+          <span className="text-[15px] font-bold tabular-nums text-ink">{formatOdds(leg.offered_odds)}</span>
+        ) : (
+          // Plain text, not a dash: a lone "—" beside these rows reads as a remove button.
+          <span className="text-[11px] font-medium text-faint">no price</span>
+        )}
         {action && (
           <button
             type="button"
