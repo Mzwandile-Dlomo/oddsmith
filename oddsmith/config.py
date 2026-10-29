@@ -48,6 +48,9 @@ class Settings(BaseSettings):
         repr=False,
     )
     default_currency: str = "ZAR"
+    # Whose days the daily paper ticket, Today and the calendar count in
+    # (see oddsmith/localdays.py). Stored timestamps stay UTC.
+    local_timezone: str = "Africa/Johannesburg"
     http_timeout_seconds: float = 15.0
     cors_origins: list[str] = ["http://localhost:3000"]
     # Simple in-memory cache TTL for provider responses (seconds).

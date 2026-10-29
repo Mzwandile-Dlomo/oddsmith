@@ -12,7 +12,7 @@ on:
     types: [completed]
   schedule:
     # Backstop if the morning sync never starts: 07:05 UTC is 09:05 SAST.
-    # Archiving is once per UTC day, so a second run is a no-op.
+    # Archiving is once per SAST day, so a second run is a no-op.
     - cron: "5 7 * * *"
   workflow_dispatch:
 

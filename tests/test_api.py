@@ -18,6 +18,7 @@ from oddsmith.db import (
     PaperLegPrediction,
     ScheduledFixture,
 )
+from oddsmith.localdays import local_day_bounds
 from oddsmith.models import Fixture, Market, MarketType, Outcome
 from oddsmith.providers.base import OddsProvider
 
@@ -717,10 +718,7 @@ def test_daily_acca_accepts_market_filters(client):
     assert body["markets_used"] == ["btts", "match_winner"]
 
 
-def test_daily_acca_auto_archives_one_canonical_paper_prediction_per_day(
-    client, monkeypatch
-):
-    """The first displayed 1.50 ticket is kept; refreshes cannot duplicate it."""
+def _stub_one_candidate(monkeypatch) -> None:
     pick = api_module.ValuePick(
         selection="Home",
         offered_odds=1.66,
@@ -742,6 +740,35 @@ def test_daily_acca_auto_archives_one_canonical_paper_prediction_per_day(
             )
         ],
     )
+
+
+def test_daily_paper_ticket_is_named_for_the_local_day_not_the_utc_date(
+    client, monkeypatch
+):
+    """00:30 SAST is 22:30 UTC the evening before; the ticket is SAST's day."""
+    _stub_one_candidate(monkeypatch)
+    local_day = (datetime.now(UTC) + timedelta(days=2)).date()
+    _store_stub_fixture(
+        datetime.combine(local_day - timedelta(days=1), time(22, 30), tzinfo=UTC)
+    )
+    start, end = local_day_bounds(local_day)
+    params = {
+        "date_from": start.isoformat(),
+        "date_to": end.isoformat(),
+        "auto_track": "true",
+    }
+
+    assert client.get("/acca/daily", params=params).json()["auto_tracked"] is True
+    assert [slip["name"] for slip in client.get("/slips").json()] == [
+        f"Paper daily 1.50 · {local_day.isoformat()}"
+    ]
+
+
+def test_daily_acca_auto_archives_one_canonical_paper_prediction_per_day(
+    client, monkeypatch
+):
+    """The first displayed 1.50 ticket is kept; refreshes cannot duplicate it."""
+    _stub_one_candidate(monkeypatch)
     day = (datetime.now(UTC) + timedelta(days=1)).date()
     _store_stub_fixture(datetime.combine(day, time(15), tzinfo=UTC))
     params = {
@@ -1016,6 +1043,38 @@ def test_calendar_and_fixture_list_include_persisted_schedule(client):
     assert day["leagues"] == ["Premier League"]
     assert fixtures[0]["id"] == "fixture_download:epl:2026:27"
     assert fixtures[0]["markets"] == []
+
+
+def test_calendar_puts_a_kickoff_after_local_midnight_on_the_local_day(client):
+    """22:30 UTC on 4 Sep is 00:30 SAST on 5 Sep, so it is a 5 Sep match."""
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            ScheduledFixture(
+                source_key="fixture_download:epl:2026:28",
+                source="fixture_download",
+                competition_key="epl",
+                league_id=39,
+                league_name="Premier League",
+                country="England",
+                season=2026,
+                match_number=28,
+                round_number=3,
+                kickoff_utc=datetime(2026, 9, 4, 22, 30),
+                home_team="Fulham",
+                away_team="Everton",
+                raw_payload={},
+            )
+        )
+        session.commit()
+
+    days = client.get(
+        "/calendar", params={"date_from": "2026-09-04", "date_to": "2026-09-05"}
+    ).json()["days"]
+
+    assert [(d["date"], d["fixture_count"]) for d in days] == [
+        ("2026-09-04", 0),
+        ("2026-09-05", 1),
+    ]
 
 
 def test_calendar_buckets_a_slip_by_its_earliest_kickoff_not_creation(client):

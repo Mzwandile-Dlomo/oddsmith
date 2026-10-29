@@ -162,8 +162,10 @@ export async function fetchDailyAcca({
     horizon_bets: String(horizonBets),
   });
   if (date) {
-    params.set("date_from", `${date}T00:00:00Z`);
-    params.set("date_to", `${date}T23:59:59Z`);
+    // The viewer's day, not UTC's: a date-time with no offset parses as local
+    // time, so this sends local midnight to 23:59:59 as UTC instants.
+    params.set("date_from", new Date(`${date}T00:00:00`).toISOString());
+    params.set("date_to", new Date(`${date}T23:59:59`).toISOString());
   }
   if (autoTrack) params.set("auto_track", "true");
   markets.forEach((market) => params.append("markets", market));

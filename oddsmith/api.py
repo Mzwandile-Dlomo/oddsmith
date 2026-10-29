@@ -30,6 +30,7 @@ from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from oddsmith.config import get_settings
+from oddsmith.localdays import local_date, local_day_bounds
 from oddsmith.db import (
     CachedFixture,
     CornerEvaluationSnapshot,
@@ -1031,7 +1032,7 @@ def daily_acca(
     # page loads retain that original price rather than replacing it with hindsight.
     if archive_paper:
         daily_view.auto_tracked = _archive_daily_paper_prediction(
-            session, daily_view, prediction_day=start.date()
+            session, daily_view, prediction_day=local_date(start)
         )
     return daily_view
 
@@ -1062,7 +1063,7 @@ def _is_canonical_daily_request(
 def _archive_daily_paper_prediction(
     session: Session, view: DailyAccaView, *, prediction_day: date_type
 ) -> bool:
-    """Persist the first valid canonical daily prediction, once per UTC day."""
+    """Persist the first valid canonical daily prediction, once per local day."""
     if not view.legs or any(leg.kickoff_utc is None for leg in view.legs):
         return False
     cutoff = datetime.now(UTC) + PAPER_MIN_LEAD
@@ -2122,13 +2123,6 @@ class CalendarView(BaseModel):
 MAX_CALENDAR_DAYS = 62
 
 
-def _day_bounds(day: date_type) -> tuple[datetime, datetime]:
-    return (
-        datetime.combine(day, time.min, tzinfo=UTC),
-        datetime.combine(day, time.max, tzinfo=UTC),
-    )
-
-
 def _slip_match_day(legs: list[SlipLeg], slip: Slip) -> date_type:
     """The day a slip belongs to: its earliest kickoff, not when it was created.
 
@@ -2136,12 +2130,8 @@ def _slip_match_day(legs: list[SlipLeg], slip: Slip) -> date_type:
     the day it should appear on in the calendar.
     """
     if legs:
-        earliest = min(leg.kickoff_utc for leg in legs)
-        aware = earliest if earliest.tzinfo else earliest.replace(tzinfo=UTC)
-        return aware.astimezone(UTC).date()
-    created = slip.created_at
-    aware = created if created.tzinfo else created.replace(tzinfo=UTC)
-    return aware.astimezone(UTC).date()
+        return local_date(min(leg.kickoff_utc for leg in legs))
+    return local_date(slip.created_at)
 
 
 @app.get("/calendar", response_model=CalendarView)
@@ -2170,8 +2160,9 @@ def calendar(
             detail=f"window too wide: {span} days (max {MAX_CALENDAR_DAYS})",
         )
 
-    window_start, _ = _day_bounds(date_from)
-    _, window_end = _day_bounds(date_to)
+    # Days are the user's local days, so the window runs from local midnight.
+    window_start, _ = local_day_bounds(date_from)
+    _, window_end = local_day_bounds(date_to)
 
     rows = session.exec(
         select(CachedFixture).where(
@@ -2182,21 +2173,14 @@ def calendar(
     fixtures_by_day: dict[date_type, list[Fixture]] = {}
     for row in rows:
         fixture = Fixture.model_validate(row.payload)
-        kickoff = fixture.kickoff_utc
-        aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=UTC)
-        fixtures_by_day.setdefault(aware.astimezone(UTC).date(), []).append(fixture)
+        fixtures_by_day.setdefault(local_date(fixture.kickoff_utc), []).append(fixture)
 
     scheduled = read_scheduled_fixtures(
         session, date_from=window_start, date_to=window_end
     )
     scheduled_by_day: dict[date_type, list[Fixture]] = {}
     for fixture in scheduled:
-        aware = (
-            fixture.kickoff_utc
-            if fixture.kickoff_utc.tzinfo
-            else fixture.kickoff_utc.replace(tzinfo=UTC)
-        )
-        scheduled_by_day.setdefault(aware.astimezone(UTC).date(), []).append(fixture)
+        scheduled_by_day.setdefault(local_date(fixture.kickoff_utc), []).append(fixture)
 
     slips = list(session.exec(select(Slip).where(Slip.user_id == DEFAULT_USER_ID)))
     slip_legs = _load_legs_by_slip(session, slips)
