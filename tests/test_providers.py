@@ -25,6 +25,7 @@ def odds_settings():
         api_football_base_url="https://v3.football.api-sports.io",
         database_url="sqlite:///:memory:",
         the_odds_api_min_interval_seconds=0,
+        api_football_min_interval_seconds=0,
     )
 
 
@@ -317,6 +318,42 @@ async def test_api_football_collects_completed_result_and_statistics(odds_settin
     assert enriched.away_corners == 4
     assert enriched.home_shots_on_target == 6
     assert stats_quota.requests_remaining == 97
+
+
+@respx.mock
+async def test_api_football_retries_a_rate_limit_sent_as_a_200_body(odds_settings):
+    limited = {"errors": {"rateLimit": "Too many requests."}, "response": []}
+    fixtures_route = respx.get(url__regex=r".*/fixtures(\?.*)?$").mock(
+        side_effect=[
+            httpx.Response(200, headers={"retry-after": "0"}, json=limited),
+            httpx.Response(200, json={"response": []}),
+        ]
+    )
+
+    async with httpx.AsyncClient(base_url=odds_settings.api_football_base_url) as client:
+        provider = ApiFootballProvider(settings=odds_settings, client=client)
+        results, _ = await provider.completed_results(datetime(2026, 8, 28).date())
+
+    assert fixtures_route.call_count == 2
+    assert results == []
+
+
+@respx.mock
+async def test_api_football_surfaces_a_lasting_rate_limit_as_429(odds_settings):
+    # A rate-limited body must not read as "no matches that day".
+    settings = odds_settings.model_copy(update={"api_football_max_retries": 1})
+    limited = {"errors": {"rateLimit": "Too many requests."}, "response": []}
+    fixtures_route = respx.get(url__regex=r".*/fixtures(\?.*)?$").mock(
+        return_value=httpx.Response(200, headers={"retry-after": "0"}, json=limited)
+    )
+
+    async with httpx.AsyncClient(base_url=settings.api_football_base_url) as client:
+        provider = ApiFootballProvider(settings=settings, client=client)
+        with pytest.raises(httpx.HTTPStatusError) as caught:
+            await provider.completed_results(datetime(2026, 8, 28).date())
+
+    assert caught.value.response.status_code == 429
+    assert fixtures_route.call_count == 2
 
 
 @respx.mock

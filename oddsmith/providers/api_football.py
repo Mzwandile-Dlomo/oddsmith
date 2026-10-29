@@ -14,7 +14,8 @@ Quota: the free plan allows 100 requests a day and 10 a minute, and every
 request below costs one. ``/fixtures?date=`` returns the whole world's card
 (~500 matches) in one request, but odds cost one request *per fixture* — so we
 keep only our tracked competitions and price a few upcoming ones per refresh.
-Every call reserves its cost with the shared ``QuotaGuard`` first.
+Every call reserves its cost with the shared ``QuotaGuard`` first, and ``_get``
+spaces calls by ``api_football_min_interval_seconds`` for the per-minute limit.
 
 Bet ids we map:
   1 Match Winner (1X2)        -> MATCH_WINNER  (Home / Draw / Away)
@@ -24,7 +25,9 @@ Bet ids we map:
 
 from __future__ import annotations
 
+import asyncio
 import re
+import time
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 
@@ -33,7 +36,7 @@ import httpx
 from oddsmith.competitions import BY_ID, COMPETITIONS
 from oddsmith.config import Settings, get_settings
 from oddsmith.models import Fixture, Market, MarketType, Outcome
-from oddsmith.providers.base import OddsProvider, ProviderError
+from oddsmith.providers.base import OddsProvider, ProviderError, retry_after
 from oddsmith.quota import QuotaExceeded, QuotaGuard, api_football_policy
 
 BET_MATCH_WINNER = 1
@@ -99,6 +102,8 @@ class ApiFootballProvider(OddsProvider):
         self._settings = settings or get_settings()
         self._client = client
         self._guard = guard
+        self._pace = asyncio.Lock()
+        self._last_request = float("-inf")
 
     @property
     def guard(self) -> QuotaGuard:
@@ -115,12 +120,33 @@ class ApiFootballProvider(OddsProvider):
         params: dict[str, object],
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
-        """Send one metered request, after reserving it with the quota guard."""
+        """Send one metered request, after reserving it with the quota guard.
+
+        Requests are spaced from the last one, and a rate limit waits and
+        retries. Every attempt is reserved, so the guard never undercounts.
+        """
         headers = headers or self._headers()
-        self.guard.require(1)
-        response = await client.get(path, headers=headers, params=params)
-        self.guard.observe(_header_integer(response, "x-ratelimit-requests-remaining"))
-        return response
+        interval = self._settings.api_football_min_interval_seconds
+        retries = self._settings.api_football_max_retries
+        for attempt in range(retries + 1):
+            self.guard.require(1)
+            async with self._pace:
+                wait = self._last_request + interval - time.monotonic()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                response = await client.get(path, headers=headers, params=params)
+                self._last_request = time.monotonic()
+            self.guard.observe(_header_integer(response, "x-ratelimit-requests-remaining"))
+            if _is_rate_limited(response):
+                # Shown to callers as a 429 so raise_for_status catches it; a 200
+                # with an empty list would read as "no matches that day".
+                response = httpx.Response(
+                    429, headers=response.headers, request=response.request
+                )
+            if response.status_code != 429 or attempt == retries:
+                return response
+            await asyncio.sleep(retry_after(response, attempt))
+        raise AssertionError("unreachable")
 
     def _headers(self) -> dict[str, str]:
         key = self._settings.api_football_key
@@ -436,6 +462,19 @@ def _stat_integer(value: object) -> int | None:
         return int(float(str(value).rstrip("%")))
     except ValueError:
         return None
+
+
+def _is_rate_limited(response: httpx.Response) -> bool:
+    """API-Sports often answers a per-minute limit with 200 and errors.rateLimit."""
+    if response.status_code == 429:
+        return True
+    if response.status_code != 200:
+        return False
+    try:
+        errors = response.json().get("errors")
+    except ValueError:
+        return False
+    return isinstance(errors, dict) and "rateLimit" in errors
 
 
 def _header_integer(response: httpx.Response, name: str) -> int | None:

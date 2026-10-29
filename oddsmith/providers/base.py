@@ -9,11 +9,22 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+import httpx
+
 from oddsmith.models import Fixture, MarketType
 
 
 class ProviderError(RuntimeError):
     """Raised when a provider is misconfigured or the upstream call fails."""
+
+
+def retry_after(response: httpx.Response, attempt: int) -> float:
+    """Seconds to wait after a rate limit: the server's Retry-After, else 2, 4, 8..."""
+    try:
+        seconds = float(response.headers["retry-after"])
+    except (KeyError, ValueError):
+        seconds = 2.0 ** (attempt + 1)
+    return min(max(seconds, 0.0), 60.0)
 
 
 @runtime_checkable

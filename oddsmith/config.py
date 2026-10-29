@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # Direct api-sports host by default; override with the RapidAPI host if you use RapidAPI.
     api_football_base_url: str = "https://v3.football.api-sports.io"
     api_football_use_rapidapi: bool = False
+    # The free plan allows 10 requests a minute; 6.5s apart stays under it.
+    # A rate limit (a 429, or a 200 whose body says rateLimit) waits and retries.
+    api_football_min_interval_seconds: float = 6.5
+    api_football_max_retries: int = 3
 
     # --- Claude (match read write-ups) ---
     # Without a key, match pages still show every computed angle and number;

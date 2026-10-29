@@ -37,7 +37,7 @@ import httpx
 
 from oddsmith.config import Settings, get_settings
 from oddsmith.models import Fixture, Market, MarketType, Outcome
-from oddsmith.providers.base import OddsProvider, ProviderError
+from oddsmith.providers.base import OddsProvider, ProviderError, retry_after
 from oddsmith.quota import QuotaExceeded, QuotaGuard, the_odds_api_policy
 
 # Soccer competitions to query, in priority order: the refresh cap keeps the
@@ -179,7 +179,7 @@ class TheOddsApiProvider(OddsProvider):
                 self._last_request = time.monotonic()
             if response.status_code != 429 or attempt == retries:
                 return response
-            await asyncio.sleep(_retry_after(response, attempt))
+            await asyncio.sleep(retry_after(response, attempt))
         raise AssertionError("unreachable")
 
     async def _sports_with_events(
@@ -431,15 +431,6 @@ def _normalize_outcome_name(name: str, home: str, away: str) -> str:
     if name == away:
         return "Away"
     return name  # "Draw", "Over", "Under" pass through
-
-
-def _retry_after(response: httpx.Response, attempt: int) -> float:
-    """Seconds to wait after a 429: the server's Retry-After, else 2, 4, 8..."""
-    try:
-        seconds = float(response.headers["retry-after"])
-    except (KeyError, ValueError):
-        seconds = 2.0 ** (attempt + 1)
-    return min(max(seconds, 0.0), 60.0)
 
 
 def _iso_z(dt: datetime) -> str:
