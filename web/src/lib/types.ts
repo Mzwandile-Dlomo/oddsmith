@@ -380,6 +380,11 @@ export interface LegView {
   point: number | null;
   price: number;
   result: LegResult;
+  /** From the stored fixture result that settles the leg; null until one exists. */
+  home_score: number | null;
+  away_score: number | null;
+  home_corners: number | null;
+  away_corners: number | null;
 }
 
 export interface SlipView {

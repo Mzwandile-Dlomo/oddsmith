@@ -240,6 +240,11 @@ class LegView(BaseModel):
     point: float | None
     price: float
     result: LegResult
+    # The linked fixture result that settled this leg; None until one is stored.
+    home_score: int | None = None
+    away_score: int | None = None
+    home_corners: int | None = None
+    away_corners: int | None = None
 
 
 class SlipView(BaseModel):
@@ -1911,7 +1916,30 @@ def _leg_inputs(legs: list[SlipLeg]) -> list[LegInput]:
     return [LegInput(price=leg.price, result=leg.result) for leg in legs]
 
 
-def _to_slip_view(slip: Slip, legs: list[SlipLeg]) -> SlipView:
+def _fixture_results(session: Session, legs: list[SlipLeg]) -> dict[str, OddsFixtureResult]:
+    """The stored result for each leg's fixture, in one query: the same rows settlement reads."""
+    ids = {leg.fixture_id for leg in legs}
+    if not ids:
+        return {}
+    rows = session.exec(select(OddsFixtureResult).where(OddsFixtureResult.fixture_id.in_(ids)))
+    return {row.fixture_id: row for row in rows}
+
+
+def _to_leg_view(leg: SlipLeg, result: OddsFixtureResult | None) -> LegView:
+    if result is None:
+        return LegView(**leg.model_dump())
+    return LegView(
+        **leg.model_dump(),
+        home_score=result.home_goals,
+        away_score=result.away_goals,
+        home_corners=result.home_corners,
+        away_corners=result.away_corners,
+    )
+
+
+def _to_slip_view(
+    slip: Slip, legs: list[SlipLeg], results: dict[str, OddsFixtureResult]
+) -> SlipView:
     inputs = _leg_inputs(legs)
     prices = [leg.price for leg in legs]
     return SlipView(
@@ -1922,7 +1950,7 @@ def _to_slip_view(slip: Slip, legs: list[SlipLeg]) -> SlipView:
         result=slip.result,
         created_at=slip.created_at,
         settled_at=slip.settled_at,
-        legs=[LegView(**leg.model_dump()) for leg in legs],
+        legs=[_to_leg_view(leg, results.get(leg.fixture_id)) for leg in legs],
         combined_odds=round(combined_odds(prices), 4),
         potential_return=potential_return(slip.stake, prices),
         potential_profit=potential_profit(slip.stake, prices),
@@ -1980,7 +2008,7 @@ def create_slip(payload: SlipCreate, session: Session = Depends(get_session)) ->
     for leg in legs:
         session.refresh(leg)
 
-    return _to_slip_view(slip, legs)
+    return _to_slip_view(slip, legs, _fixture_results(session, legs))
 
 
 @app.get("/slips", response_model=list[SlipView])
@@ -1991,7 +2019,8 @@ def list_slips(session: Session = Depends(get_session)) -> list[SlipView]:
         )
     )
     legs = _load_legs_by_slip(session, slips)
-    return [_to_slip_view(slip, legs.get(slip.id or 0, [])) for slip in slips]
+    results = _fixture_results(session, [leg for slip_legs in legs.values() for leg in slip_legs])
+    return [_to_slip_view(slip, legs.get(slip.id or 0, []), results) for slip in slips]
 
 
 @app.get("/slips/{slip_id}", response_model=SlipView)
@@ -1999,7 +2028,8 @@ def get_slip(slip_id: int, session: Session = Depends(get_session)) -> SlipView:
     slip = session.get(Slip, slip_id)
     if slip is None:
         raise HTTPException(status_code=404, detail="slip not found")
-    return _to_slip_view(slip, _load_legs(session, slip_id))
+    legs = _load_legs(session, slip_id)
+    return _to_slip_view(slip, legs, _fixture_results(session, legs))
 
 
 @app.patch("/slips/{slip_id}", response_model=SlipView)
@@ -2040,7 +2070,7 @@ def update_slip(
 
     legs = _load_legs(session, slip_id)
     session.refresh(slip)
-    return _to_slip_view(slip, legs)
+    return _to_slip_view(slip, legs, _fixture_results(session, legs))
 
 
 # --------------------------------------------------------------------------- #

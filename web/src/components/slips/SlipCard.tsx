@@ -163,6 +163,22 @@ export function SlipCard({ slip }: SlipCardProps) {
                     </span>
                     <span className="text-[11px] text-faint">
                       {formatKickoff(leg.kickoff_utc)}
+                      {leg.home_score !== null && leg.away_score !== null && (
+                        <>
+                          {" · "}
+                          <span className="font-semibold tabular-nums text-ink">
+                            FT {leg.home_score}–{leg.away_score}
+                          </span>
+                        </>
+                      )}
+                      {/* A corners leg is decided by corners, so show the number it was graded on. */}
+                      {leg.market_type === "corner_totals" &&
+                        leg.home_corners !== null &&
+                        leg.away_corners !== null && (
+                          <span className="tabular-nums">
+                            {" · "}Corners {leg.home_corners}–{leg.away_corners}
+                          </span>
+                        )}
                     </span>
                     {/*
                       "Pending" on a match that finished days ago reads as if
