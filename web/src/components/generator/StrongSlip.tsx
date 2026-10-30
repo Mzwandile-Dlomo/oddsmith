@@ -157,6 +157,86 @@ function Section({
   );
 }
 
+/**
+ * A leg list whose rows can be ticked and shared. Ticks reset whenever a new
+ * suggestion loads (`source` changes), like the slip edits do.
+ */
+function ShareableSection({
+  source,
+  legs,
+  title,
+  hint,
+  className,
+  shareTitle,
+  action,
+}: {
+  source: StrongSlipView;
+  legs: StrongLegView[];
+  title: string;
+  hint: string;
+  className?: string;
+  shareTitle: string;
+  action?: (leg: StrongLegView) => { kind: "add" | "remove"; onClick: () => void };
+}) {
+  const [ticked, setTicked] = useState<{ source: StrongSlipView; keys: Set<string> } | null>(null);
+  const keys = ticked?.source === source ? ticked.keys : new Set<string>();
+  const setKeys = (next: StrongLegView[]) => setTicked({ source, keys: new Set(next.map(legKey)) });
+  // Filter through `legs`, not `keys`: a leg moved to the other list keeps a stale key here.
+  const selected = legs.filter((l) => keys.has(legKey(l)));
+  const toggle = (leg: StrongLegView) =>
+    setKeys(selected.includes(leg) ? selected.filter((l) => l !== leg) : [...selected, leg]);
+  // "Top N" is active when exactly the first N are ticked; lists run strongest first.
+  const isTop = (n: number) => selected.length === n && legs.slice(0, n).every((l) => selected.includes(l));
+  const quickPicks = [
+    ...QUICK_PICKS.filter((n) => n < legs.length).map((n) => ({ n, label: `Top ${n}` })),
+    { n: legs.length, label: `All ${legs.length}` },
+  ];
+
+  return (
+    <Section className={className} title={title} hint={hint}>
+      {/* Share controls sit above the list, not below 20-odd rows. */}
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {quickPicks.map(({ n, label }) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={isTop(n)}
+              onClick={() => setKeys(legs.slice(0, n))}
+              className={`min-h-[44px] rounded-lg border px-3 text-xs font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[32px] ${
+                isTop(n)
+                  ? "border-accent/40 bg-accent-light text-accent ring-1 ring-accent/20"
+                  : "border-border bg-surface text-muted hover:border-outline"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setKeys([])}
+              className="min-h-[44px] rounded-lg px-3 text-xs font-medium text-muted transition-colors duration-150 hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[32px]"
+            >
+              Clear
+            </button>
+          )}
+          <span className="ml-auto text-[11px] tabular-nums text-faint">{selected.length} selected</span>
+        </div>
+        <ShareSlip title={shareTitle} legs={selected} />
+      </div>
+      {legs.map((leg) => (
+        <LegRow
+          key={legKey(leg)}
+          leg={leg}
+          action={action?.(leg)}
+          pick={{ selected: selected.includes(leg), onToggle: () => toggle(leg) }}
+        />
+      ))}
+    </Section>
+  );
+}
+
 function SummaryRow({ label, value, tone = "text-ink" }: { label: string; value: string; tone?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-2">
@@ -183,23 +263,6 @@ export function StrongSlip() {
   const [edited, setEdited] = useState<{ source: StrongSlipView; legs: StrongLegView[] } | null>(null);
   const legs = data ? (edited?.source === data ? edited.legs : data.legs) : [];
   const setLegs = (next: StrongLegView[]) => data && setEdited({ source: data, legs: next });
-  // Unpriced picks ticked for sharing; same reset-on-new-suggestion rule as the slip.
-  const [shareSel, setShareSel] = useState<{ source: StrongSlipView; keys: Set<string> } | null>(null);
-  const shareKeys = data && shareSel?.source === data ? shareSel.keys : new Set<string>();
-  const setShareKeys = (keys: Set<string>) => data && setShareSel({ source: data, keys });
-  const toggleShare = (leg: StrongLegView) => {
-    const next = new Set(shareKeys);
-    if (!next.delete(legKey(leg))) next.add(legKey(leg));
-    setShareKeys(next);
-  };
-  const unpriced = data?.unpriced ?? [];
-  const sharedUnpriced = unpriced.filter((l) => shareKeys.has(legKey(l)));
-  // "Top N" is active when exactly the first N are ticked; the list is strongest first.
-  const isTop = (n: number) => shareKeys.size === n && unpriced.slice(0, n).every((l) => shareKeys.has(legKey(l)));
-  const quickPicks = [
-    ...QUICK_PICKS.filter((n) => n < unpriced.length).map((n) => ({ n, label: `Top ${n}` })),
-    { n: unpriced.length, label: `All ${unpriced.length}` },
-  ];
   const [stake, setStake] = useState("0");
   const [savedFor, setSavedFor] = useState<StrongLegView[] | null>(null);
 
@@ -356,7 +419,6 @@ export function StrongSlip() {
                 {(save.error as Error).message}
               </p>
             )}
-            <ShareSlip title="Strong slip" legs={legs} />
           </div>
         )}
       </div>
@@ -378,15 +440,14 @@ export function StrongSlip() {
             <div className="order-2 flex flex-col gap-3">
               <p className={`text-sm ${data.target_met ? "text-muted" : "text-warn-strong"}`}>{data.note}</p>
               {legs.length > 0 ? (
-                <Section title={`${legs.length}-leg Strong slip`}>
-                  {legs.map((leg) => (
-                    <LegRow
-                      key={legKey(leg)}
-                      leg={leg}
-                      action={{ kind: "remove", onClick: () => setLegs(legs.filter((l) => l !== leg)) }}
-                    />
-                  ))}
-                </Section>
+                <ShareableSection
+                  source={data}
+                  legs={legs}
+                  title={`${legs.length}-leg Strong slip`}
+                  hint="Tap − to drop a leg, or tick any to share them."
+                  shareTitle="Strong slip"
+                  action={(leg) => ({ kind: "remove", onClick: () => setLegs(legs.filter((l) => l !== leg)) })}
+                />
               ) : (
                 <div className="rounded-xl border border-border bg-canvas px-5 py-10 text-center text-sm text-faint">
                   No priced Strong legs in this window.
@@ -394,65 +455,29 @@ export function StrongSlip() {
               )}
             </div>
           )}
-          {pool.length > 0 && (
-            <Section className="order-4" title="Other Strong picks" hint="Tap + to add one to the slip.">
-              {pool.map((leg) => (
-                <LegRow
-                  key={legKey(leg)}
-                  leg={leg}
-                  action={{ kind: "add", onClick: () => setLegs([...legs, leg]) }}
-                />
-              ))}
-            </Section>
+          {data && pool.length > 0 && (
+            <ShareableSection
+              className="order-4"
+              source={data}
+              legs={pool}
+              title="Other Strong picks"
+              hint="Tap + to add one to the slip, or tick any to share them."
+              shareTitle="Strong picks"
+              action={(leg) => ({ kind: "add", onClick: () => setLegs([...legs, leg]) })}
+            />
           )}
         </div>
 
         <div className="contents xl:flex xl:flex-col xl:gap-4">
-          {unpriced.length > 0 && (
-            <Section
+          {data && data.unpriced.length > 0 && (
+            <ShareableSection
               className="order-5"
+              source={data}
+              legs={data.unpriced}
               title="Strong, but no price collected"
               hint="Mostly Over 1.5 lines our odds feed doesn't carry. Check the price at your bookmaker. Tick any to share them."
-            >
-              {/* Share controls sit above the list, not below 20-odd rows. */}
-              <div className="flex flex-col gap-3 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {quickPicks.map(({ n, label }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      aria-pressed={isTop(n)}
-                      onClick={() => setShareKeys(new Set(unpriced.slice(0, n).map(legKey)))}
-                      className={`min-h-[44px] rounded-lg border px-3 text-xs font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[32px] ${
-                        isTop(n)
-                          ? "border-accent/40 bg-accent-light text-accent ring-1 ring-accent/20"
-                          : "border-border bg-surface text-muted hover:border-outline"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  {shareKeys.size > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShareKeys(new Set())}
-                      className="min-h-[44px] rounded-lg px-3 text-xs font-medium text-muted transition-colors duration-150 hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[32px]"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  <span className="ml-auto text-[11px] tabular-nums text-faint">{shareKeys.size} selected</span>
-                </div>
-                <ShareSlip title="Strong picks" legs={sharedUnpriced} />
-              </div>
-              {unpriced.map((leg) => (
-                <LegRow
-                  key={legKey(leg)}
-                  leg={leg}
-                  pick={{ selected: shareKeys.has(legKey(leg)), onToggle: () => toggleShare(leg) }}
-                />
-              ))}
-            </Section>
+              shareTitle="Strong picks"
+            />
           )}
           {data && (
             <div className="order-6 rounded-xl border border-border bg-subtle px-4 py-3.5">
