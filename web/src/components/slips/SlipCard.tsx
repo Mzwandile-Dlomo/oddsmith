@@ -27,10 +27,13 @@ const LEG_RESULT_OPTIONS: { value: LegResult; label: string }[] = [
 
 interface SlipCardProps {
   slip: SlipView;
+  /** The desktop detail pane shows the selected slip in full, with no toggle. */
+  alwaysOpen?: boolean;
 }
 
-export function SlipCard({ slip }: SlipCardProps) {
-  const [expanded, setExpanded] = useState(false);
+export function SlipCard({ slip, alwaysOpen = false }: SlipCardProps) {
+  const [toggled, setExpanded] = useState(false);
+  const expanded = alwaysOpen || toggled;
   const [legResults, setLegResults] = useState<Record<number, LegResult>>(
     () =>
       Object.fromEntries(slip.legs.map((l) => [l.id, l.result]))
@@ -74,13 +77,7 @@ export function SlipCard({ slip }: SlipCardProps) {
   const hasPendingLeg = slip.legs.some((l) => l.result === "pending");
   const decidedWithPendingLegs = slip.result !== "pending" && hasPendingLeg;
 
-  return (
-    <Card className="overflow-hidden">
-      <button
-        className="w-full px-4 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
-        onClick={() => setExpanded((e) => !e)}
-        aria-expanded={expanded}
-      >
+  const summary = (
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1.5 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -124,18 +121,34 @@ export function SlipCard({ slip }: SlipCardProps) {
               )}
             </div>
           </div>
-          <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all duration-150 ${
-            expanded
-              ? "border-accent/30 bg-accent-light text-accent"
-              : "border-border bg-subtle text-faint"
-          }`}>
-            <ChevronDown
-              size={14}
-              className={`transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
-            />
-          </span>
+          {!alwaysOpen && (
+            <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all duration-150 ${
+              expanded
+                ? "border-accent/30 bg-accent-light text-accent"
+                : "border-border bg-subtle text-faint"
+            }`}>
+              <ChevronDown
+                size={14}
+                className={`transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+              />
+            </span>
+          )}
         </div>
-      </button>
+  );
+
+  return (
+    <Card className="overflow-hidden">
+      {alwaysOpen ? (
+        <div className="px-4 py-4">{summary}</div>
+      ) : (
+        <button
+          className="w-full px-4 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+        >
+          {summary}
+        </button>
+      )}
 
       {expanded && (
         <div className="border-t border-hairline px-4 pb-4 pt-3">
