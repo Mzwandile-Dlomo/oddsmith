@@ -408,22 +408,38 @@ def _market_prob(prices: dict[str, float], side: str) -> float | None:
 def verdict(
     discovery: SplitStats,
     holdout: SplitStats,
-    market: MarketStats | None,
+    market_discovery: MarketStats | None = None,
+    market_holdout: MarketStats | None = None,
     *,
     z_confirm: float = Z_CONFIRM,
     min_discovery_fires: int = MIN_DISCOVERY_FIRES,
     min_holdout_fires: int = MIN_HOLDOUT_FIRES,
 ) -> Verdict:
+    """Every claim must clear the threshold on discovery *and* holdout seasons.
+
+    Beating the market is its own two-block test: a pattern can land at the
+    usual rate yet be underpriced, and one lucky holdout run is not an edge.
+    """
     if discovery.fires < min_discovery_fires or holdout.fires < min_holdout_fires:
         return "too_rare"
+    priced = (
+        market_discovery is not None
+        and market_holdout is not None
+        and market_discovery.matches >= min_discovery_fires
+        and market_holdout.matches >= min_holdout_fires
+    )
+    if (
+        priced
+        and (market_discovery.z or 0.0) >= z_confirm
+        and (market_holdout.z or 0.0) >= z_confirm
+    ):
+        return "beats_market"
     dz, hz = discovery.z or 0.0, holdout.z or 0.0
     if dz <= -z_confirm and hz <= -z_confirm:
         return "backfires"
     if dz < z_confirm or hz < z_confirm:
         return "noise"
-    if market is None or market.matches < min_holdout_fires:
-        return "holds_up"
-    return "beats_market" if (market.z or 0.0) >= z_confirm else "priced_in"
+    return "priced_in" if priced else "holds_up"
 
 
 def evaluate_patterns(
@@ -447,7 +463,7 @@ def evaluate_patterns(
     holdout = set(seasons[-holdout_seasons:])
 
     splits: dict[tuple[str, str, bool], _Accumulator] = defaultdict(_Accumulator)
-    markets: dict[tuple[str, str], _MarketAccumulator] = defaultdict(_MarketAccumulator)
+    markets: dict[tuple[str, str, bool], _MarketAccumulator] = defaultdict(_MarketAccumulator)
     for match in matches:
         is_holdout = match.season in holdout
         for line_key, (_, line_test) in _LINES.items():
@@ -455,26 +471,31 @@ def evaluate_patterns(
             if landed is None or base is None:
                 continue
             side = PRICED_LINES.get(line_key)
-            market_p = _market_prob(match.prices, side) if is_holdout and side else None
+            market_p = _market_prob(match.prices, side) if side else None
             for pattern in PATTERNS:
                 acc = splits[(pattern.key, line_key, is_holdout)]
                 acc.eligible += 1
                 if not pattern.test(match.situation, line_test):
                     continue
                 acc.add(landed, base)
-                if market_p is not None:
-                    markets[(pattern.key, line_key)].add(landed, market_p, match.prices[side])
+                if side and market_p is not None:
+                    markets[(pattern.key, line_key, is_holdout)].add(
+                        landed, market_p, match.prices[side]
+                    )
 
     results: list[PatternResult] = []
     for pattern in PATTERNS:
         for line_key, (line_label, _) in _LINES.items():
             discovery = splits[(pattern.key, line_key, False)].stats()
             held = splits[(pattern.key, line_key, True)].stats()
-            market = markets[(pattern.key, line_key)].stats() if line_key in PRICED_LINES else None
+            priced = line_key in PRICED_LINES
+            market_discovery = markets[(pattern.key, line_key, False)].stats() if priced else None
+            market_holdout = markets[(pattern.key, line_key, True)].stats() if priced else None
             call = verdict(
                 discovery,
                 held,
-                market,
+                market_discovery,
+                market_holdout,
                 z_confirm=z_confirm,
                 min_discovery_fires=min_discovery_fires,
                 min_holdout_fires=min_holdout_fires,
@@ -490,7 +511,8 @@ def evaluate_patterns(
                     verdict_label=VERDICT_LABELS[call],
                     discovery=discovery,
                     holdout=held,
-                    market=market,
+                    market_discovery=market_discovery,
+                    market_holdout=market_holdout,
                 )
             )
     return PatternReport(
@@ -522,7 +544,7 @@ class ActivePattern(BaseModel):
     verdict: Verdict
     verdict_label: str
     holdout: SplitStats
-    market: MarketStats | None
+    market_holdout: MarketStats | None
     # Today's best collected price for the line, from the fixture's insights.
     book_price: float | None
     book_implied_prob: float | None
@@ -584,7 +606,7 @@ def active_patterns(insights: MatchInsights, report: PatternReport | None) -> Fi
                 verdict=result.verdict,
                 verdict_label=result.verdict_label,
                 holdout=result.holdout,
-                market=result.market,
+                market_holdout=result.market_holdout,
                 book_price=trend.book_price if trend else None,
                 book_implied_prob=trend.book_implied_prob if trend else None,
             )

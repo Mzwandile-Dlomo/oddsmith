@@ -63,6 +63,8 @@ export function formatSlipText(title: string, legs: ShareLeg[]): string {
   if (prices.every((p) => p !== null)) {
     const combined = (prices as number[]).reduce((acc, p) => acc * p, 1);
     lines.push(`*Combined odds: ${formatOdds(combined)}*`);
+  } else if (prices.every((p) => p === null)) {
+    lines.push("No prices collected yet. Check each one at your bookmaker.");
   } else {
     lines.push("Some legs have no price yet. Check them at your bookmaker.");
   }
@@ -73,6 +75,7 @@ export function formatSlipText(title: string, legs: ShareLeg[]): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-  lines.push(`_Prices as of ${readAt}; they move. Every leg has to land._`);
+  const asOf = prices.some((p) => p !== null) ? `Prices as of ${readAt}; they move. ` : "";
+  lines.push(`_${asOf}Every leg has to land._`);
   return lines.join("\n");
 }

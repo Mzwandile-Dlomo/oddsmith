@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle, Flame, Minus, Plus } from "lucide-react";
+import { AlertCircle, Check, CheckCircle, Flame, Minus, Plus } from "lucide-react";
 import { createSlip, fetchStrongAcca } from "@/lib/api";
 import type { StrongLegView, StrongSlipView } from "@/lib/types";
 import { ShareSlip } from "@/components/picks/ShareSlip";
@@ -41,6 +41,7 @@ const WINDOWS: { value: WindowKey; label: string }[] = [
 ];
 const TARGETS = [1.5, 2, 3, 5] as const;
 const LEG_OPTIONS = [3, 4, 5, 6] as const;
+const QUICK_PICKS = [2, 4, 6] as const;
 
 const legKey = (leg: StrongLegView) => `${leg.fixture_id}|${leg.label}`;
 
@@ -69,9 +70,12 @@ function Evidence({ leg }: { leg: StrongLegView }) {
 function LegRow({
   leg,
   action,
+  pick,
 }: {
   leg: StrongLegView;
   action?: { kind: "add" | "remove"; onClick: () => void };
+  /** A share checkbox, for the unpriced list where there's no slip to add to. */
+  pick?: { selected: boolean; onToggle: () => void };
 }) {
   return (
     <div className="flex items-start justify-between gap-3 px-4 py-3">
@@ -101,6 +105,22 @@ function LegRow({
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-border text-muted transition-colors duration-150 hover:border-outline hover:bg-subtle hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-8 sm:w-8"
           >
             {action.kind === "add" ? <Plus size={14} /> : <Minus size={14} />}
+          </button>
+        )}
+        {pick && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={pick.selected}
+            onClick={pick.onToggle}
+            aria-label={`Share ${leg.home_team} vs ${leg.away_team}`}
+            className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-8 sm:w-8 ${
+              pick.selected
+                ? "border-accent bg-accent-light text-accent"
+                : "border-border text-transparent hover:border-outline hover:bg-subtle"
+            }`}
+          >
+            <Check size={14} />
           </button>
         )}
       </div>
@@ -156,6 +176,23 @@ export function StrongSlip() {
   const [edited, setEdited] = useState<{ source: StrongSlipView; legs: StrongLegView[] } | null>(null);
   const legs = data ? (edited?.source === data ? edited.legs : data.legs) : [];
   const setLegs = (next: StrongLegView[]) => data && setEdited({ source: data, legs: next });
+  // Unpriced picks ticked for sharing; same reset-on-new-suggestion rule as the slip.
+  const [shareSel, setShareSel] = useState<{ source: StrongSlipView; keys: Set<string> } | null>(null);
+  const shareKeys = data && shareSel?.source === data ? shareSel.keys : new Set<string>();
+  const setShareKeys = (keys: Set<string>) => data && setShareSel({ source: data, keys });
+  const toggleShare = (leg: StrongLegView) => {
+    const next = new Set(shareKeys);
+    if (!next.delete(legKey(leg))) next.add(legKey(leg));
+    setShareKeys(next);
+  };
+  const unpriced = data?.unpriced ?? [];
+  const sharedUnpriced = unpriced.filter((l) => shareKeys.has(legKey(l)));
+  // "Top N" is active when exactly the first N are ticked; the list is strongest first.
+  const isTop = (n: number) => shareKeys.size === n && unpriced.slice(0, n).every((l) => shareKeys.has(legKey(l)));
+  const quickPicks = [
+    ...QUICK_PICKS.filter((n) => n < unpriced.length).map((n) => ({ n, label: `Top ${n}` })),
+    { n: unpriced.length, label: `All ${unpriced.length}` },
+  ];
   const [stake, setStake] = useState("0");
   const [savedFor, setSavedFor] = useState<StrongLegView[] | null>(null);
 
@@ -364,14 +401,49 @@ export function StrongSlip() {
         </div>
 
         <div className="contents xl:flex xl:flex-col xl:gap-4">
-          {data && data.unpriced.length > 0 && (
+          {unpriced.length > 0 && (
             <Section
               className="order-5"
               title="Strong, but no price collected"
-              hint="Mostly Over 1.5 lines our odds feed doesn't carry. Check the price at your bookmaker."
+              hint="Mostly Over 1.5 lines our odds feed doesn't carry. Check the price at your bookmaker. Tick any to share them."
             >
-              {data.unpriced.map((leg) => (
-                <LegRow key={legKey(leg)} leg={leg} />
+              {/* Share controls sit above the list, not below 20-odd rows. */}
+              <div className="flex flex-col gap-3 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {quickPicks.map(({ n, label }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-pressed={isTop(n)}
+                      onClick={() => setShareKeys(new Set(unpriced.slice(0, n).map(legKey)))}
+                      className={`min-h-[44px] rounded-lg border px-3 text-xs font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[32px] ${
+                        isTop(n)
+                          ? "border-accent/40 bg-accent-light text-accent ring-1 ring-accent/20"
+                          : "border-border bg-surface text-muted hover:border-outline"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {shareKeys.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShareKeys(new Set())}
+                      className="min-h-[44px] rounded-lg px-3 text-xs font-medium text-muted transition-colors duration-150 hover:bg-hairline hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-[32px]"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <span className="ml-auto text-[11px] tabular-nums text-faint">{shareKeys.size} selected</span>
+                </div>
+                <ShareSlip title="Strong picks" legs={sharedUnpriced} />
+              </div>
+              {unpriced.map((leg) => (
+                <LegRow
+                  key={legKey(leg)}
+                  leg={leg}
+                  pick={{ selected: shareKeys.has(legKey(leg)), onToggle: () => toggleShare(leg) }}
+                />
               ))}
             </Section>
           )}
