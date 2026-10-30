@@ -14,6 +14,7 @@ from oddsmith.db import (
     HistoricalMatch,
     MatchObservation,
     ModelEvaluationSnapshot,
+    OddsFixtureResult,
     OddsSnapshot,
     PaperLegPrediction,
     ScheduledFixture,
@@ -972,6 +973,33 @@ def _slip_on(kickoff: str, *, stake: float = 10.0, price: float = 2.0) -> dict:
             }
         ],
     }
+
+
+def test_slip_legs_show_the_stored_score_once_the_fixture_has_a_result(client):
+    slip = client.post("/slips", json=_slip_on("2026-07-22T15:00:00Z")).json()
+    assert slip["legs"][0]["home_score"] is None
+
+    with Session(db_module.get_engine()) as session:
+        session.add(
+            OddsFixtureResult(
+                fixture_id="stub:1",
+                source="test",
+                source_key="result:1",
+                kickoff_utc=datetime(2026, 7, 22, 15),
+                home_team="Arsenal",
+                away_team="Chelsea",
+                home_goals=2,
+                away_goals=0,
+                home_corners=6,
+                away_corners=9,
+            )
+        )
+        session.commit()
+
+    leg = client.get("/slips").json()[0]["legs"][0]
+    assert (leg["home_score"], leg["away_score"]) == (2, 0)
+    assert (leg["home_corners"], leg["away_corners"]) == (6, 9)
+    assert client.get(f"/slips/{slip['id']}").json()["legs"][0]["home_score"] == 2
 
 
 def test_calendar_returns_one_entry_per_day_in_the_window(client):

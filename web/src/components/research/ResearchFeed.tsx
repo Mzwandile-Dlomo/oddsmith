@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarX, ChevronLeft, ChevronRight, Search, Tag } from "lucide-react";
 import { fetchResearchDay } from "@/lib/api";
 import type { ResearchCard } from "@/lib/types";
-import { addDays, dateFromISO, parseKickoff, toLocalISODate, todayISO } from "@/lib/utils";
+import { addDays, dateFromISO, hasFinished, toLocalISODate, todayISO } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonCard } from "@/components/ui/Spinner";
 import { FormStrip, StrengthBadge, fmt, localTime } from "./parts";
@@ -17,14 +17,11 @@ export function researchHref(card: { fixture_id: string }, day: string): string 
   return `/matches/${encodeURIComponent(card.fixture_id)}?date=${day}`;
 }
 
-// A match runs ~2h with stoppages; past that, a missing score means the results sync hasn't caught up.
-const MATCH_LENGTH_MS = 2 * 60 * 60_000;
-
 function Card({ card, day }: { card: ResearchCard; day: string }) {
   const [top, second] = card.angles;
   const finished = card.home_score !== null && card.away_score !== null;
-  const awaitingResult =
-    !finished && card.time_confirmed && Date.now() - parseKickoff(card.kickoff_utc).getTime() > MATCH_LENGTH_MS;
+  // Past full time, a missing score means the results sync hasn't caught up.
+  const awaitingResult = !finished && card.time_confirmed && hasFinished(card.kickoff_utc);
   return (
     <Link
       href={researchHref(card, day)}

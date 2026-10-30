@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle, Flame, Minus, Plus } from "lucide-react";
 import { createSlip, fetchStrongAcca } from "@/lib/api";
 import type { StrongLegView, StrongSlipView } from "@/lib/types";
+import { ShareSlip } from "@/components/picks/ShareSlip";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Spinner } from "@/components/ui/Spinner";
 import {
@@ -311,6 +312,7 @@ export function StrongSlip() {
                 {(save.error as Error).message}
               </p>
             )}
+            <ShareSlip title="Strong slip" legs={legs} />
           </div>
         )}
       </div>

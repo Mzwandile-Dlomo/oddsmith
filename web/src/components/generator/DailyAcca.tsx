@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { fetchDailyAcca, createSlip } from "@/lib/api";
 import type { DailyAccaView, MarketType } from "@/lib/types";
+import { ShareSlip } from "@/components/picks/ShareSlip";
 import { Spinner } from "@/components/ui/Spinner";
 import { formatKickoffShort } from "@/lib/utils";
 
@@ -376,6 +377,8 @@ function DailyResults({ data, onSave, isSaving, savedOk, saveError }: DailyResul
               )}
             </div>
           )}
+
+          <ShareSlip title="Daily slip" legs={data.legs} />
         </div>
       </div>
     </div>

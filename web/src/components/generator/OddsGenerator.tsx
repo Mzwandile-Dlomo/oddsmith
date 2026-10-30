@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { TrendingUp, AlertCircle, Info, CheckCircle } from "lucide-react";
 import { fetchWeekendAcca, fetchBacktest, createSlip } from "@/lib/api";
 import type { AccaView, MarketType } from "@/lib/types";
+import { ShareSlip } from "@/components/picks/ShareSlip";
 import { Spinner } from "@/components/ui/Spinner";
 import { formatSignedPercent } from "@/lib/utils";
 
@@ -172,6 +173,8 @@ function AccaResults({ acca, hitRate, onSave, isSaving, savedOk, saveError }: Ac
             </>
           )}
         </div>
+
+        <ShareSlip title="Value acca" legs={validLegs} />
 
         <div className="rounded-xl border border-border bg-subtle px-4 py-3.5">
           <div className="flex items-start gap-2">
