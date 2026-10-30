@@ -123,6 +123,7 @@ _ALIASES = {
     "atletico mineiro": "atletico mg",
     "atletico paranaense": "athletico pr",
     "bragantino sp": "bragantino",
+    "rb bragantino": "bragantino",
     "botafogo": "botafogo rj",
     "flamengo": "flamengo rj",
     "vasco da gama": "vasco",

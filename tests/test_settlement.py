@@ -7,6 +7,7 @@ from oddsmith.data.settlement import (
     settle_pending_slips,
     settle_personal_pool_entries,
     snapshot_result,
+    team_key,
 )
 from oddsmith.db import (
     MatchObservation,
@@ -77,6 +78,37 @@ def test_settlement_matches_normalized_teams_and_kickoff():
     assert run.unmatched == 0
     assert result.home_goals == 2
     assert result.home_corners == 6
+
+
+def test_settlement_matches_clubs_that_only_agree_after_aliasing():
+    # The Odds API, Football-Data and API-Football each spell Bragantino differently.
+    assert team_key("Bragantino-SP") == team_key("Bragantino") == team_key("RB Bragantino")
+    assert team_key("Chapecoense") == team_key("Chapecoense-SC")
+    with _session() as session:
+        snapshot = _snapshot()
+        snapshot.home_team, snapshot.away_team = "Bragantino-SP", "Chapecoense"
+        session.add(snapshot)
+        session.add(
+            MatchObservation(
+                source_key="result:1",
+                source="test",
+                league="Brazil",
+                season=2026,
+                kickoff_utc=datetime(2026, 8, 1, 15, tzinfo=UTC),
+                home_team="Bragantino",
+                away_team="Chapecoense-SC",
+                home_goals=1,
+                away_goals=1,
+                raw_payload={},
+            )
+        )
+        session.commit()
+
+        run = settle_from_match_observations(
+            session, now=datetime(2026, 8, 2, tzinfo=UTC)
+        )
+
+    assert run.matched == 1
 
 
 def test_snapshot_result_supports_btts_goals_corners_and_match_winner():

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -16,12 +15,9 @@ from oddsmith.db import (
     Slip,
     SlipLeg,
 )
+from oddsmith.insights import club_key
 from oddsmith.models import MarketType
 from oddsmith.slips import LegInput, LegResult, SlipResult, settle
-from oddsmith.textnorm import fold_accents
-
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
-_TEAM_NOISE = {"fc", "afc", "cf", "sc"}
 
 
 @dataclass(frozen=True)
@@ -39,8 +35,10 @@ class SlipSettlementRun:
 
 
 def team_key(name: str) -> str:
-    tokens = _NON_ALNUM.sub(" ", fold_accents(name).lower()).split()
-    return " ".join(token for token in tokens if token not in _TEAM_NOISE)
+    """The insights club key, aliases included: odds, results and schedule feeds
+    spell clubs differently ("Bragantino-SP", "Bragantino", "RB Bragantino"),
+    and a fixture whose names only match after aliasing must still settle."""
+    return club_key(name)
 
 
 def _naive_utc(value: datetime) -> datetime:

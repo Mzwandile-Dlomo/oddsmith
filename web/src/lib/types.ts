@@ -613,6 +613,9 @@ export interface ResearchCard {
   away_goals_for: number | null;
   home_avg_total_goals: number | null;
   away_avg_total_goals: number | null;
+  /** Full time, once a results sync has stored the match; null before then. */
+  home_score: number | null;
+  away_score: number | null;
   angles: Angle[];
   has_history: boolean;
   /** False while the schedule only knows the date, not the kickoff time. */

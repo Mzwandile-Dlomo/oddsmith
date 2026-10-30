@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarX, ChevronLeft, ChevronRight, Search, Tag } from "lucide-react";
 import { fetchResearchDay } from "@/lib/api";
 import type { ResearchCard } from "@/lib/types";
-import { addDays, dateFromISO, toLocalISODate, todayISO } from "@/lib/utils";
+import { addDays, dateFromISO, parseKickoff, toLocalISODate, todayISO } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonCard } from "@/components/ui/Spinner";
 import { FormStrip, StrengthBadge, fmt, localTime } from "./parts";
@@ -17,8 +17,14 @@ export function researchHref(card: { fixture_id: string }, day: string): string 
   return `/matches/${encodeURIComponent(card.fixture_id)}?date=${day}`;
 }
 
+// A match runs ~2h with stoppages; past that, a missing score means the results sync hasn't caught up.
+const MATCH_LENGTH_MS = 2 * 60 * 60_000;
+
 function Card({ card, day }: { card: ResearchCard; day: string }) {
   const [top, second] = card.angles;
+  const finished = card.home_score !== null && card.away_score !== null;
+  const awaitingResult =
+    !finished && card.time_confirmed && Date.now() - parseKickoff(card.kickoff_utc).getTime() > MATCH_LENGTH_MS;
   return (
     <Link
       href={researchHref(card, day)}
@@ -35,9 +41,20 @@ function Card({ card, day }: { card: ResearchCard; day: string }) {
         )}
       </div>
 
-      <h2 className="text-base font-semibold leading-snug text-ink group-hover:text-accent">
-        {card.home_team} <span className="text-sm font-normal text-faint">vs</span> {card.away_team}
-      </h2>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-base font-semibold leading-snug text-ink group-hover:text-accent">
+          {card.home_team} <span className="text-sm font-normal text-faint">vs</span> {card.away_team}
+        </h2>
+        {finished && (
+          <span className="flex shrink-0 items-baseline gap-1.5 rounded-lg border border-border bg-hairline px-2 py-0.5">
+            <span className="text-[10px] font-semibold uppercase text-faint">FT</span>
+            <span className="text-sm font-semibold tabular-nums text-ink">
+              {card.home_score}–{card.away_score}
+            </span>
+          </span>
+        )}
+        {awaitingResult && <span className="shrink-0 pt-0.5 text-[11px] text-faint">Result not synced yet</span>}
+      </div>
 
       {top ? (
         <div className="flex flex-col gap-1.5">

@@ -11,11 +11,13 @@ happened, and the page always shows the sample next to it.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 
-from oddsmith.insights import MatchInsights, TrendRow
+from oddsmith.db import MatchObservation
+from oddsmith.insights import MatchInsights, TrendRow, club_key
 
 STRONG = 0.8
 MODERATE = 0.6
@@ -23,6 +25,9 @@ MODERATE = 0.6
 # all; 2/3 would read as "Moderate" on almost no evidence.
 MIN_SAMPLE = 6
 PLACEHOLDER_UTC_HOURS = frozenset({22, 23, 0})
+# Sources disagree on kickoff times by a few hours (time zones, late changes);
+# the same tolerance settlement uses to pair a fixture with its result.
+RESULT_TOLERANCE = timedelta(hours=12)
 
 
 class Angle(BaseModel):
@@ -97,6 +102,8 @@ class ResearchCard(BaseModel):
     away_goals_for: float | None
     home_avg_total_goals: float | None
     away_avg_total_goals: float | None
+    home_score: int | None = None  # full time, once a results sync has stored it
+    away_score: int | None = None
     angles: list[Angle]  # top two
     has_history: bool  # both clubs matched to stored results
     time_confirmed: bool  # False while the schedule only knows the date
@@ -122,6 +129,27 @@ def kickoff_time_known(provider: str, kickoff_utc: datetime) -> bool:
     return not (provider == "fixture_download" and placeholder)
 
 
+def final_score(
+    rows: Iterable[MatchObservation], *, home_team: str, away_team: str, kickoff_utc: datetime
+) -> tuple[int, int] | None:
+    """The stored full-time score of this fixture, or None until a results sync has it.
+
+    Both clubs must match in the same orientation, so a reverse fixture from
+    earlier in the season is never mistaken for this one.
+    """
+    home, away = club_key(home_team), club_key(away_team)
+    kickoff = kickoff_utc if kickoff_utc.tzinfo else kickoff_utc.replace(tzinfo=UTC)
+    for row in rows:
+        played = row.kickoff_utc if row.kickoff_utc.tzinfo else row.kickoff_utc.replace(tzinfo=UTC)
+        if (
+            club_key(row.home_team) == home
+            and club_key(row.away_team) == away
+            and abs(played - kickoff) <= RESULT_TOLERANCE
+        ):
+            return row.home_goals, row.away_goals
+    return None
+
+
 def research_card(
     *,
     fixture_id: str,
@@ -130,8 +158,10 @@ def research_card(
     priced: bool,
     insights: MatchInsights,
     provider: str = "",
+    score: tuple[int, int] | None = None,
 ) -> ResearchCard:
     home, away = insights.home, insights.away
+    home_score, away_score = score or (None, None)
     return ResearchCard(
         fixture_id=fixture_id,
         league=league,
@@ -144,6 +174,8 @@ def research_card(
         away_goals_for=away.averages.goals_for,
         home_avg_total_goals=home.averages.total_goals,
         away_avg_total_goals=away.averages.total_goals,
+        home_score=home_score,
+        away_score=away_score,
         angles=rank_angles(insights, limit=2),
         has_history=bool(home.club_key and away.club_key and home.matches and away.matches),
         time_confirmed=kickoff_time_known(provider, kickoff_utc),

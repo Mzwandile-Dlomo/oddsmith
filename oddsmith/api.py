@@ -76,7 +76,7 @@ from oddsmith.odds_model.value import ValuePick
 from oddsmith.history import team_stats
 from oddsmith.insights import MatchInsights, build_insights, club_key, load_insight_rows
 from oddsmith.match_read import MatchReadView, get_match_read
-from oddsmith.research import ResearchDay, research_card
+from oddsmith.research import ResearchDay, final_score, research_card
 from oddsmith.strong_slip import (
     DEFAULT_MIN_LEG_ODDS,
     StrongSlip,
@@ -476,8 +476,8 @@ def _aware_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def _insights_for(session: Session, fixtures: list[Fixture]) -> list[MatchInsights]:
-    """Insights for each fixture, in order, from one history load for every club playing."""
+def _club_rows(session: Session, fixtures: list[Fixture]) -> list[list[MatchObservation]]:
+    """Each fixture's two clubs' stored rows, in order, from one history load."""
     rows = load_insight_rows(
         session, {name for f in fixtures for name in (f.home_team, f.away_team)}
     )
@@ -487,16 +487,25 @@ def _insights_for(session: Session, fixtures: list[Fixture]) -> list[MatchInsigh
     for row in rows:
         by_club[club_key(row.home_team)].append(row)
         by_club[club_key(row.away_team)].append(row)
+    return [by_club[club_key(f.home_team)] + by_club[club_key(f.away_team)] for f in fixtures]
+
+
+def _fixture_insights(fixture: Fixture, rows: list[MatchObservation]) -> MatchInsights:
+    return build_insights(
+        fixture_id=fixture.id,
+        home_team=fixture.home_team,
+        away_team=fixture.away_team,
+        kickoff_utc=fixture.kickoff_utc,
+        rows=rows,
+        markets=fixture.markets,
+    )
+
+
+def _insights_for(session: Session, fixtures: list[Fixture]) -> list[MatchInsights]:
+    """Insights for each fixture, in order, from one history load for every club playing."""
     return [
-        build_insights(
-            fixture_id=f.id,
-            home_team=f.home_team,
-            away_team=f.away_team,
-            kickoff_utc=f.kickoff_utc,
-            rows=by_club[club_key(f.home_team)] + by_club[club_key(f.away_team)],
-            markets=f.markets,
-        )
-        for f in fixtures
+        _fixture_insights(f, rows)
+        for f, rows in zip(fixtures, _club_rows(session, fixtures), strict=True)
     ]
 
 
@@ -536,9 +545,13 @@ def research_day(
             kickoff_utc=f.kickoff_utc,
             priced=bool(f.markets),
             provider=f.provider,
-            insights=insights,
+            # Insights only read rows from before kickoff; the result is the row at it.
+            insights=_fixture_insights(f, rows),
+            score=final_score(
+                rows, home_team=f.home_team, away_team=f.away_team, kickoff_utc=f.kickoff_utc
+            ),
         )
-        for f, insights in zip(fixtures, _insights_for(session, fixtures), strict=True)
+        for f, rows in zip(fixtures, _club_rows(session, fixtures), strict=True)
     ]
     day = ResearchDay(
         date_from=date_from,
