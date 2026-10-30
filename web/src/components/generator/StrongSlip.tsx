@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, CheckCircle, Flame, Minus, Plus } from "lucide-react";
 import { createSlip, fetchStrongAcca } from "@/lib/api";
 import type { StrongLegView, StrongSlipView } from "@/lib/types";
+import { matchHref } from "@/components/fixtures/FixtureCard";
 import { ShareSlip } from "@/components/picks/ShareSlip";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Spinner } from "@/components/ui/Spinner";
@@ -80,13 +82,18 @@ function LegRow({
   return (
     <div className="flex items-start justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-ink">
-          {leg.home_team} vs {leg.away_team}
-        </p>
-        <p className="mt-0.5 text-[11px] text-faint">
-          {formatKickoff(leg.kickoff_utc)}
-          {leg.league ? ` · ${leg.league}` : ""}
-        </p>
+        <Link
+          href={matchHref({ id: leg.fixture_id, kickoff_utc: leg.kickoff_utc })}
+          className="block rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+        >
+          <p className="truncate text-[13px] font-medium text-ink hover:underline">
+            {leg.home_team} vs {leg.away_team}
+          </p>
+          <p className="mt-0.5 text-[11px] text-faint">
+            {formatKickoff(leg.kickoff_utc)}
+            {leg.league ? ` · ${leg.league}` : ""}
+          </p>
+        </Link>
         <p className="mt-1 text-[12px] font-semibold text-accent">{leg.label}</p>
         <Evidence leg={leg} />
       </div>

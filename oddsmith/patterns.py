@@ -277,10 +277,13 @@ class MarketStats(BaseModel):
     roi_ci_high: float | None
 
 
-Verdict = Literal["beats_market", "holds_up", "priced_in", "backfires", "noise", "too_rare"]
+Verdict = Literal[
+    "beats_market", "edge_candidate", "holds_up", "priced_in", "backfires", "noise", "too_rare"
+]
 
 VERDICT_LABELS: dict[str, str] = {
-    "beats_market": "Beat the closing price",
+    "beats_market": "Beat the price",
+    "edge_candidate": "Beat the price · ROI unproven",
     "holds_up": "Holds up · price untested",
     "priced_in": "Real, but priced in",
     "backfires": "Lands less than usual",
@@ -288,7 +291,9 @@ VERDICT_LABELS: dict[str, str] = {
     "too_rare": "Too rare to judge",
 }
 # Best evidence first, for listing a fixture's active patterns.
-VERDICT_ORDER = ["beats_market", "holds_up", "priced_in", "backfires", "noise", "too_rare"]
+VERDICT_ORDER = [
+    "beats_market", "edge_candidate", "holds_up", "priced_in", "backfires", "noise", "too_rare"
+]  # fmt: skip
 
 
 class PatternResult(BaseModel):
@@ -419,6 +424,8 @@ def verdict(
 
     Beating the market is its own two-block test: a pattern can land at the
     usual rate yet be underpriced, and one lucky holdout run is not an edge.
+    Like the daily-ticket gate, "beats_market" also needs the holdout ROI
+    interval above zero; short of that it is only a candidate.
     """
     if discovery.fires < min_discovery_fires or holdout.fires < min_holdout_fires:
         return "too_rare"
@@ -433,7 +440,8 @@ def verdict(
         and (market_discovery.z or 0.0) >= z_confirm
         and (market_holdout.z or 0.0) >= z_confirm
     ):
-        return "beats_market"
+        roi_low = market_holdout.roi_ci_low
+        return "beats_market" if roi_low is not None and roi_low > 0 else "edge_candidate"
     dz, hz = discovery.z or 0.0, holdout.z or 0.0
     if dz <= -z_confirm and hz <= -z_confirm:
         return "backfires"
