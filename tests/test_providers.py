@@ -6,7 +6,11 @@ import respx
 
 from oddsmith.config import Settings
 from oddsmith.models import MarketType
-from oddsmith.providers.api_football import ApiFootballProvider, league_label
+from oddsmith.providers.api_football import (
+    ApiFootballProvider,
+    PlanRestricted,
+    league_label,
+)
 from oddsmith.providers.base import ProviderError
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
 from oddsmith.providers.the_odds_api import DEFAULT_SOCCER_SPORTS
@@ -372,8 +376,27 @@ async def test_api_football_raises_on_a_refusal_sent_as_a_200_body(odds_settings
 
     async with httpx.AsyncClient(base_url=odds_settings.api_football_base_url) as client:
         provider = ApiFootballProvider(settings=odds_settings, client=client)
-        with pytest.raises(ProviderError, match="suspended"):
+        with pytest.raises(ProviderError, match="suspended") as caught:
             await provider.completed_results(datetime(2026, 11, 1).date())
+
+    assert not isinstance(caught.value, PlanRestricted)
+
+
+@respx.mock
+async def test_api_football_marks_a_date_outside_the_plan_as_plan_restricted(odds_settings):
+    # The results ingest stops at this day instead of failing the job.
+    outside = {
+        "errors": {"plan": "Free plans do not have access to this date."},
+        "response": [],
+    }
+    respx.get(url__regex=r".*/fixtures(\?.*)?$").mock(
+        return_value=httpx.Response(200, json=outside)
+    )
+
+    async with httpx.AsyncClient(base_url=odds_settings.api_football_base_url) as client:
+        provider = ApiFootballProvider(settings=odds_settings, client=client)
+        with pytest.raises(PlanRestricted):
+            await provider.completed_results(datetime(2026, 10, 30).date())
 
 
 @respx.mock

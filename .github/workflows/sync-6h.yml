@@ -12,9 +12,11 @@ on:
   workflow_dispatch:
     inputs:
       lookback_days:
+        # API-Football's free plan only serves yesterday to tomorrow; older
+        # days are refused, and Football-Data's daily sync settles those.
         description: "Days back to look for unresolved priced fixtures"
         required: false
-        default: "3"
+        default: "1"
 
 concurrency:
   group: oddsmith-sync
@@ -42,7 +44,7 @@ jobs:
       - name: Ingest completed results and settle slips and personal pool
         run: |
           uv run python scripts/ingest_current_results.py \
-            --lookback-days "${{ inputs.lookback_days || '3' }}" \
+            --lookback-days "${{ inputs.lookback_days || '1' }}" \
             --write
 
       # Prices come from a different provider, so a results outage (API-Football

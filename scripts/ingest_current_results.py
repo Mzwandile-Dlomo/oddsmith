@@ -28,7 +28,12 @@ from oddsmith.db import (
     init_db,
 )
 from oddsmith.slips import LegResult
-from oddsmith.providers.api_football import ApiFootballProvider, ApiFootballResult
+from oddsmith.providers.api_football import (
+    ApiFootballProvider,
+    ApiFootballResult,
+    PlanRestricted,
+)
+from oddsmith.providers.base import ProviderError
 from oddsmith.quota import QuotaExceeded
 
 
@@ -147,6 +152,9 @@ async def _run() -> int:
     daily_remaining: int | None = None
     minute_remaining: int | None = None
     rate_limited = False
+    # A refusal other than the plan's date window (suspended account, bad key).
+    # Kept, not raised, so the results already fetched are still stored.
+    refusal: ProviderError | None = None
     wanted: dict[tuple[str, str], list[tuple]] = {}
     for row in priced:
         key = (team_key(row[2]), team_key(row[3]))
@@ -161,6 +169,14 @@ async def _run() -> int:
             results, quota = await provider.completed_results(day)
         except QuotaExceeded as exc:
             print(f"Stopping early: {exc}")
+            break
+        except PlanRestricted as exc:
+            # Days run newest first, so every remaining day is older and would
+            # be refused too; asking anyway only spends requests.
+            print(f"Stopping at {day}: {exc}")
+            break
+        except ProviderError as exc:
+            refusal = exc
             break
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 429:
@@ -198,6 +214,11 @@ async def _run() -> int:
                     result, quota = await provider.add_result_statistics(result)
                 except QuotaExceeded:
                     minute_remaining = 0  # no budget left for statistics today
+                except ProviderError as exc:
+                    # Keep the final score without statistics.
+                    if not isinstance(exc, PlanRestricted):
+                        refusal = refusal or exc
+                    minute_remaining = 0
                 except httpx.HTTPStatusError as exc:
                     if exc.response.status_code != 429:
                         raise
@@ -231,6 +252,9 @@ async def _run() -> int:
         f"rate limited {'yes' if rate_limited else 'no'}; "
         f"daily requests remaining {daily_remaining if daily_remaining is not None else 'unknown'}."
     )
+    if refusal is not None:
+        print(f"API-Football refused the request: {refusal}", file=sys.stderr)
+        return 1
     return 0
 
 

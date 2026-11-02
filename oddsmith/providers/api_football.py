@@ -90,6 +90,11 @@ class ApiFootballQuota:
     minute_remaining: int | None
 
 
+class PlanRestricted(ProviderError):
+    """The plan does not serve this request; the free plan only answers for
+    dates from yesterday to tomorrow, so an older results day is refused."""
+
+
 class ApiFootballProvider(OddsProvider):
     name = "api_football"
 
@@ -488,6 +493,8 @@ def _raise_for_body_errors(response: httpx.Response) -> None:
     except ValueError:
         return
     errors = body.get("errors") if isinstance(body, dict) else None
+    if isinstance(errors, dict) and set(errors) == {"plan"}:
+        raise PlanRestricted(f"api-football returned errors: {errors}")
     if errors:
         raise ProviderError(f"api-football returned errors: {errors}")
 
