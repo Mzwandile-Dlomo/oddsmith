@@ -108,9 +108,12 @@ async def test_gather_reraises_unexpected_error():
 
 async def test_gather_raises_when_every_provider_fails():
     """An empty list would read as "no matches", and get logged as fetched."""
-    with pytest.raises(AllProvidersFailed, match="boom: no key"):
+    with pytest.raises(AllProvidersFailed, match="boom: no key") as caught:
         await gather_fixtures(
             [_FailingProvider(), _FailingProvider()],
             date_from=datetime(2026, 7, 25, tzinfo=UTC),
             date_to=datetime(2026, 7, 26, tzinfo=UTC),
         )
+    # Callers tell a spent budget from an outage by the original errors.
+    assert len(caught.value.errors) == 2
+    assert all(isinstance(error, ProviderError) for error in caught.value.errors)

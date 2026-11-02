@@ -144,6 +144,7 @@ class ApiFootballProvider(OddsProvider):
                     429, headers=response.headers, request=response.request
                 )
             if response.status_code != 429 or attempt == retries:
+                _raise_for_body_errors(response)
                 return response
             await asyncio.sleep(retry_after(response, attempt))
         raise AssertionError("unreachable")
@@ -475,6 +476,20 @@ def _is_rate_limited(response: httpx.Response) -> bool:
     except ValueError:
         return False
     return isinstance(errors, dict) and "rateLimit" in errors
+
+
+def _raise_for_body_errors(response: httpx.Response) -> None:
+    """API-Sports refuses with 200 and errors (suspended account, bad key, plan
+    limits) and an empty response; read as data, that is "no matches that day"."""
+    if response.status_code != 200:
+        return
+    try:
+        body = response.json()
+    except ValueError:
+        return
+    errors = body.get("errors") if isinstance(body, dict) else None
+    if errors:
+        raise ProviderError(f"api-football returned errors: {errors}")
 
 
 def _header_integer(response: httpx.Response, name: str) -> int | None:

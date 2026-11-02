@@ -24,6 +24,10 @@ from oddsmith.textnorm import fold_accents
 class AllProvidersFailed(ProviderError):
     """Every provider errored, so the window's emptiness says nothing about it."""
 
+    def __init__(self, message: str, errors: list[ProviderError] | None = None):
+        super().__init__(message)
+        self.errors = errors or []
+
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _TEAM_NOISE = ("fc", "afc", "cf", "sc")
 
@@ -69,16 +73,18 @@ async def gather_fixtures(
 
     all_fixtures: list[Fixture] = []
     failures: list[str] = []
+    errors: list[ProviderError] = []
     for provider, result in zip(providers, results):
         if isinstance(result, ProviderError):
             failures.append(f"{provider.name}: {result}")
+            errors.append(result)
             continue
         if isinstance(result, BaseException):
             raise result
         all_fixtures.extend(result)
 
     if providers and len(failures) == len(providers):
-        raise AllProvidersFailed("; ".join(failures))
+        raise AllProvidersFailed("; ".join(failures), errors)
 
     return _merge(all_fixtures)
 

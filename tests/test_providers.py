@@ -7,6 +7,7 @@ import respx
 from oddsmith.config import Settings
 from oddsmith.models import MarketType
 from oddsmith.providers.api_football import ApiFootballProvider, league_label
+from oddsmith.providers.base import ProviderError
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
 from oddsmith.providers.the_odds_api import DEFAULT_SOCCER_SPORTS
 
@@ -354,6 +355,25 @@ async def test_api_football_surfaces_a_lasting_rate_limit_as_429(odds_settings):
 
     assert caught.value.response.status_code == 429
     assert fixtures_route.call_count == 2
+
+
+@respx.mock
+async def test_api_football_raises_on_a_refusal_sent_as_a_200_body(odds_settings):
+    # A suspended account answers every request this way; read as data it is
+    # "no finished matches", and slips sit pending while the job reports success.
+    suspended = {
+        "errors": {"access": "Your account is suspended."},
+        "results": 0,
+        "response": [],
+    }
+    respx.get(url__regex=r".*/fixtures(\?.*)?$").mock(
+        return_value=httpx.Response(200, json=suspended)
+    )
+
+    async with httpx.AsyncClient(base_url=odds_settings.api_football_base_url) as client:
+        provider = ApiFootballProvider(settings=odds_settings, client=client)
+        with pytest.raises(ProviderError, match="suspended"):
+            await provider.completed_results(datetime(2026, 11, 1).date())
 
 
 @respx.mock

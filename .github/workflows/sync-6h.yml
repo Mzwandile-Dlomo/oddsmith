@@ -45,12 +45,17 @@ jobs:
             --lookback-days "${{ inputs.lookback_days || '3' }}" \
             --write
 
+      # Prices come from a different provider, so a results outage (API-Football
+      # refusing every request) must not also stop the odds capture. The job
+      # still ends failed, which is what flags the outage.
       - name: Capture a fresh window of prices
+        if: ${{ !cancelled() }}
         run: uv run python scripts/capture_odds.py --days 3
 
       # Research collection only: these prices are stored and settled, but are
       # intentionally unavailable to the model and generated tickets.
       - name: Capture corner-total prices for research
+        if: ${{ !cancelled() }}
         run: |
           uv run python scripts/capture_odds.py --days 3 \
             --markets corner_totals \

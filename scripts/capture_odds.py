@@ -26,7 +26,9 @@ from oddsmith.db import OddsSnapshot, get_engine, init_db
 from oddsmith.models import MarketType
 from oddsmith.providers.api_football import ApiFootballProvider
 from oddsmith.providers.base import OddsProvider, ProviderError
+from oddsmith.providers.merge import AllProvidersFailed
 from oddsmith.providers.the_odds_api import TheOddsApiProvider
+from oddsmith.quota import QuotaExceeded
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -102,14 +104,25 @@ async def _run() -> int:
         before = _snapshot_count(session)
         fixtures = []
         if bulk_markets:
-            fixtures = await get_cached_fixtures(
-                session,
-                _providers(args.provider),
-                date_from=now,
-                date_to=end,
-                markets=bulk_markets,
-                force_refresh=True,
-            )
+            try:
+                fixtures = await get_cached_fixtures(
+                    session,
+                    _providers(args.provider),
+                    date_from=now,
+                    date_to=end,
+                    markets=bulk_markets,
+                    force_refresh=True,
+                )
+            except AllProvidersFailed as exc:
+                # The daily budget covers about one full capture (the morning
+                # cycle's), so the later cycles find it spent. That is the
+                # budget working, not an outage; any other error still fails.
+                if not exc.errors or not all(
+                    isinstance(error, QuotaExceeded) for error in exc.errors
+                ):
+                    raise
+                print(f"No new prices: today's credit budget is already spent ({exc}).")
+                return 0
         if additional_markets:
             try:
                 result = await TheOddsApiProvider().collect_additional_markets(
