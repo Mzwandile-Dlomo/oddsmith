@@ -13,7 +13,7 @@ WEB_PORT ?= 3000
 .PHONY: help setup web-setup db-up db-down db-reset db-logs \
         up up-db down run web-dev test lint fmt check \
         web-build web-lint web-check sync-football-data sync-fixtures \
-        settle sync daily-paper whatsapp-picks collect-corners clean
+        settle sync daily-paper send-picks collect-corners clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -80,7 +80,7 @@ sync: ## Fetch results and fresh prices, then settle (spends provider quota)
 daily-paper: ## Archive today's qualified model ticket as a paper observation
 	$(UV) python scripts/generate_daily_paper.py
 
-whatsapp-picks: ## Preview the Strong slip WhatsApp message (SEND=1 to deliver it)
+send-picks: ## Preview the Strong slip message (SEND=1 to send it to Telegram/WhatsApp)
 	$(UV) python scripts/send_strong_picks.py $(if $(SEND),--send)
 
 collect-corners: ## Collect research-only corner prices (max 5 events / 10 credits)

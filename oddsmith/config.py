@@ -45,10 +45,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, repr=False)
     match_read_model: str = "claude-opus-5-5"
 
-    # --- WhatsApp (scripts/send_strong_picks.py) ---
-    # CallMeBot (callmebot.com) only messages the number that activated the
-    # key, which is all a "send me today's picks" job needs. The phone is in
-    # international format, e.g. +27821234567.
+    # --- Daily picks message (scripts/send_strong_picks.py, oddsmith/notify.py) ---
+    # Each channel sends only when both of its values are set.
+    # Telegram: a bot token from @BotFather and the chat id of your chat with it.
+    telegram_bot_token: str | None = Field(default=None, repr=False)
+    telegram_chat_id: str | None = Field(default=None, repr=False)
+    # WhatsApp via CallMeBot (callmebot.com), which only messages the number
+    # that activated the key. International format, e.g. +27821234567.
     whatsapp_phone: str | None = Field(default=None, repr=False)
     callmebot_api_key: str | None = Field(default=None, repr=False)
 
