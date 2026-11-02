@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, repr=False)
     match_read_model: str = "claude-opus-5-5"
 
+    # --- WhatsApp (scripts/send_strong_picks.py) ---
+    # CallMeBot (callmebot.com) only messages the number that activated the
+    # key, which is all a "send me today's picks" job needs. The phone is in
+    # international format, e.g. +27821234567.
+    whatsapp_phone: str | None = Field(default=None, repr=False)
+    callmebot_api_key: str | None = Field(default=None, repr=False)
+
     # Optional additional trusted root for corporate TLS inspection. This is
     # added to the normal public CA set; verification is never disabled.
     football_data_ca_bundle: str | None = None

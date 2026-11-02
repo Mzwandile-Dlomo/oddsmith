@@ -1,0 +1,36 @@
+# Every morning: send the Strong slip for today and tomorrow to WhatsApp.
+# It only reads the database, so it spends no provider quota.
+name: Send Strong picks to WhatsApp
+
+on:
+  schedule:
+    # After the 06:40 UTC sync has usually priced the day. GitHub often starts
+    # scheduled runs late, so this is "sometime after 09:30 SAST", not on the dot.
+    # GitHub cron is UTC: 07:30 UTC is 09:30 SAST.
+    - cron: "30 7 * * *"
+  # The "Run workflow" button, for a demo on demand.
+  workflow_dispatch:
+
+concurrency:
+  group: oddsmith-whatsapp
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WHATSAPP_PHONE: ${{ secrets.WHATSAPP_PHONE }}
+      CALLMEBOT_API_KEY: ${{ secrets.CALLMEBOT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Build and send the Strong slip
+        run: uv run python scripts/send_strong_picks.py --send
